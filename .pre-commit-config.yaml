@@ -1,4 +1,4 @@
-# Lint + tests run locally only (private repo: no tests in GitHub Actions).
+# Lint + tests run locally only (private repo: no GitHub Actions).
 # Install once: uvx pre-commit install
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

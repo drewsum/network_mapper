@@ -71,7 +71,8 @@ Raw DNS queries are kept for `NETMAP_RAW_RETENTION_DAYS` (default 30). Hourly an
 aggregates are kept for 90 and 365 days. These policies are re-applied from env on every
 `netmap migrate`, which runs automatically on startup.
 
-## CI
+## Images and CI
 
-`.github/workflows/image.yml` only builds and publishes `ghcr.io/drewsum/network_mapper`
-on pushes to `main` and on `v*` tags, so TrueNAS can pull the image.
+There's no CI. Images are built on the machine that runs them (`docker compose up -d --build`):
+this PC for development, and the TrueNAS host for deployment, from a git checkout. Nothing is
+published to a registry, and the repo stays private.
