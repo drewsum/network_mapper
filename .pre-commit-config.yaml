@@ -1,0 +1,37 @@
+# Lint + tests run locally only (private repo: no tests in GitHub Actions).
+# Install once: uvx pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+  - repo: local
+    hooks:
+      - id: no-hardcoded-ips
+        name: no hardcoded IPs (use NETMAP_* env settings)
+        entry: python scripts/check_hardcoded_ips.py
+        language: system
+        exclude: (^|/)(\.env\.example|uv\.lock|package-lock\.json)$
+      - id: pytest
+        name: backend unit tests
+        entry: uv run --directory backend pytest -q
+        language: system
+        pass_filenames: false
+        files: ^(backend|scripts)/
+      - id: web-lint
+        name: web lint + typecheck
+        entry: bash -c "cd web && npm run -s lint && npx tsc --noEmit"
+        language: system
+        pass_filenames: false
+        files: ^web/

@@ -1,0 +1,96 @@
+# Dev stack. Run locally with `docker compose up --build`; see README.
+# All network-specific settings come from .env (copy .env.example).
+
+x-app: &app
+  build: .
+  env_file: .env
+  environment:
+    NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  restart: unless-stopped
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    env_file: .env
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${NETMAP_DB_PUBLISH_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["netmap", "migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    command: ["netmap", "api"]
+    ports:
+      - "${NETMAP_API_PUBLISH_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  collector:
+    <<: *app
+    command: ["netmap", "collector"]
+    # On TrueNAS/Linux the collector will need network_mode: host + NET_RAW (from M1);
+    # Docker Desktop can't see the real LAN, so dev keeps the default bridge network.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/netmap-collector-heartbeat') > 60)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    image: node:24-slim
+    working_dir: /web
+    command: ["sh", "-c", "npm ci && npm run dev"]
+    environment:
+      NETMAP_API_PROXY: http://api:8000
+      VITE_POLL: "1"
+    volumes:
+      - ./web:/web
+      - web-node-modules:/web/node_modules
+    ports:
+      - "${NETMAP_WEB_PUBLISH_PORT:-5173}:5173"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5173').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # One-off: docker compose run --rm seed [--reset] [--days N]
+  seed:
+    <<: *app
+    entrypoint: ["netmap", "seed"]
+    command: []
+    restart: "no"
+    profiles: [tools]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:
+  web-node-modules:
