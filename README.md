@@ -20,7 +20,7 @@ backend/            Python package `netmap` (uv project)
   migrations/       Alembic migrations (hypertables, continuous aggregates)
   tests/
 web/                React + TypeScript + Vite UI
-scripts/            check_hardcoded_ips.py, test.sh
+scripts/            check_hardcoded_ips.py, test.sh, build-on-host.sh
 Dockerfile          one image; compose picks the role (api / collector / migrate / seed)
 docker-compose.yml  dev stack
 deploy/             portainer-compose.yml: the TrueNAS server stack

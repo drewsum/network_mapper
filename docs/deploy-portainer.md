@@ -1,9 +1,11 @@
 # Deploying on TrueNAS with Portainer
 
-The server runs netmap as a Portainer **Git-repository stack** built from
-`deploy/portainer-compose.yml`. Nothing is published to a registry: the image is built on the
-host from the repo on every deploy (`pull_policy: build`). The API container also serves the
-built UI, so there's no separate web container.
+The server runs netmap as a Portainer **Git-repository stack** from
+`deploy/portainer-compose.yml`. Nothing is published to a registry. The Portainer TrueNAS app
+can't run image builds (it fails with `mkdir /.docker: permission denied`), so the image is
+built on the host over SSH with `scripts/build-on-host.sh`, and the stack uses `netmap:local`
+with `pull_policy: never`. The API container also serves the built UI, so there's no separate
+web container.
 
 | Service | Network | Purpose |
 |---|---|---|
@@ -46,7 +48,7 @@ The compose file passes each setting to the containers explicitly as `${VAR:-}`,
 Portainer doesn't write a `stack.env` file that compose can read for Git stacks. When you add a
 new `NETMAP_*` setting, add it to `x-netmap-env` in `deploy/portainer-compose.yml` too.
 
-Deploy, then check that `db` and `api` are healthy, `migrate` exited with code 0, and
+Build the image first (`bash scripts/build-on-host.sh`, see the dev loop), then deploy and check that `db` and `api` are healthy, `migrate` exited with code 0, and
 `collector` is healthy. The UI is at `http://<truenas-host>:<NETMAP_API_PUBLISH_PORT>`.
 
 ## Environment variables
@@ -61,10 +63,13 @@ Same as `.env.example`, plus:
 
 ## Dev loop
 
-1. Develop on the dev PC and run `bash scripts/test.sh`, then push a branch.
-2. Point the stack at that branch (or merge to `main`) and redeploy with *Pull and redeploy*,
-   in the UI or through the Portainer API. The image is rebuilt from the new code.
-3. Check container health and logs through Portainer. Over SSH, use `sudo docker logs` or
+1. Develop on the dev PC and run `bash scripts/test.sh`, then commit and push a branch.
+2. Build the image on the host: `bash scripts/build-on-host.sh [ref]`. It streams
+   `git archive` of the ref over SSH into `sudo docker build`, so the host needs no checkout and
+   no GitHub token.
+3. Point the stack at that branch (or merge to `main`) and redeploy with *Pull and redeploy*,
+   in the UI or through the Portainer API. The containers are recreated from the new image.
+4. Check container health and logs through Portainer. Over SSH, use `sudo docker logs` or
    `sudo docker exec` against the `netmap` containers only.
 
 ## Ground rules on the server

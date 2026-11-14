@@ -1,7 +1,8 @@
 # Server stack, deployed by Portainer as a Git-repository stack (see docs/deploy-portainer.md).
 # All settings come from the stack's env vars in Portainer, passed in explicitly below.
 # (Portainer doesn't write a stack.env that compose can read for Git stacks.)
-# The image is built on the host from this repo; the API also serves the built UI.
+# The image is built on the host over SSH (scripts/build-on-host.sh), because the Portainer
+# TrueNAS app can't run builds. The API also serves the built UI.
 
 # Every NETMAP_* setting from .env.example. Blank values fall back to the app's defaults.
 x-netmap-env: &netmap-env
@@ -18,12 +19,8 @@ x-netmap-env: &netmap-env
   NETMAP_LOG_LEVEL: ${NETMAP_LOG_LEVEL:-}
 
 x-app: &app
-  build:
-    context: ..
-    dockerfile: Dockerfile
   image: netmap:local
-  # Rebuild on every deploy so a git redeploy picks up new code.
-  pull_policy: build
+  pull_policy: never
   environment: *netmap-env
   restart: unless-stopped
 
