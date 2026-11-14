@@ -12,12 +12,13 @@ import asyncio
 import contextlib
 import json
 import logging
+import socket
 import ssl
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from sqlalchemy import func, select
 
@@ -191,6 +192,8 @@ class PiholeSource(Source):
         self.interval_seconds = settings.pihole_poll_seconds
         self._client: PiholeClient | None = None
         self._last: tuple[int, datetime] | None = None  # newest stored (id, time)
+        # The Pi-hole host's own LAN address: its queries arrive from 127.0.0.1.
+        self._pihole_ip: str | None = None
 
     def enabled(self) -> bool:
         return bool(self.settings.pihole_url and self.settings.pihole_password)
@@ -215,6 +218,10 @@ class PiholeSource(Source):
                 verify_tls=self.settings.pihole_verify_tls,
             )
             self._last = self._newest_stored()
+            try:
+                self._pihole_ip = socket.gethostbyname(urlsplit(self.settings.pihole_url).hostname)
+            except (OSError, TypeError, UnicodeError):
+                self._pihole_ip = None
         now = datetime.now(UTC)
         if self._last is None:
             since, after_id = now - BACKFILL, 0
@@ -229,7 +236,7 @@ class PiholeSource(Source):
         if not queries:
             return 0
         with get_sessionmaker()() as session:
-            inserted = record_queries(session, queries)
+            inserted = record_queries(session, queries, resolver_ip=self._pihole_ip)
         newest = queries[-1]
         self._last = (newest.id, max(newest.time, self._last[1] if self._last else newest.time))
         return inserted

@@ -1,6 +1,7 @@
 """Storing DNS queries (from Pi-hole) and keeping the domains table current."""
 
 from collections.abc import Sequence
+from ipaddress import ip_address
 from typing import Protocol
 
 from sqlalchemy import func
@@ -29,11 +30,20 @@ class QueryLike(Protocol):
     def status(self) -> str: ...
 
 
-def record_queries(session: Session, queries: Sequence[QueryLike]) -> int:
+def record_queries(
+    session: Session, queries: Sequence[QueryLike], resolver_ip: str | None = None
+) -> int:
     """Store queries not stored yet, each credited to the device that has its client IP
-    now (the poller runs seconds behind, so that's the device that asked). Commits.
+    now (the poller runs seconds behind, so that's the device that asked). Loopback
+    clients are the DNS server's own host, credited to ``resolver_ip`` if given. Commits.
     Returns how many were new."""
     ip_to_mac = {ip: mac for mac, ip in known_addresses(session).items()}
+
+    def mac_for(client_ip: str) -> str | None:
+        if resolver_ip and ip_address(client_ip).is_loopback:
+            client_ip = resolver_ip
+        return ip_to_mac.get(client_ip)
+
     inserted = 0
     for start in range(0, len(queries), BATCH):
         rows = [
@@ -41,7 +51,7 @@ def record_queries(session: Session, queries: Sequence[QueryLike]) -> int:
                 "time": q.time,
                 "pihole_id": q.id,
                 "client_ip": q.client_ip,
-                "mac": ip_to_mac.get(q.client_ip),
+                "mac": mac_for(q.client_ip),
                 "domain": q.domain,
                 "query_type": q.query_type,
                 "status": q.status,

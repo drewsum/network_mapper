@@ -19,6 +19,7 @@ from netmap.db.models import Device, DeviceIP, DnsQuery, Domain
 
 PASSWORD = "app-password"
 PHONE_MAC = "00:aa:00:00:00:44"
+PIHOLE_MAC = "00:aa:00:00:00:53"
 
 
 class FakePihole:
@@ -168,27 +169,37 @@ def test_polls_resume_across_restarts_without_duplicates(db, fake):
     fake.add(1, now - 30, "a.example")
     fake.add(2, now - 20, "b.example", status="GRAVITY")
     fake.add(3, now - 10, "a.example", client="192.0.2.200")  # not a known device
+    fake.add(4, now - 9, "pi.hole", client="127.0.0.1")  # the Pi-hole host itself
+    with get_sessionmaker()() as s:
+        s.execute(insert(Device), [{"mac": PIHOLE_MAC}])
+        s.execute(insert(DeviceIP), [{"mac": PIHOLE_MAC, "ip": "127.0.0.1"}])
+        s.commit()
     source = pihole.PiholeSource(db)
     assert source.enabled()
-    assert source._poll() == 3
-    assert stored() == [(1, PHONE_MAC, "allowed"), (2, PHONE_MAC, "blocked"), (3, None, "allowed")]
+    assert source._poll() == 4
+    assert stored() == [
+        (1, PHONE_MAC, "allowed"),
+        (2, PHONE_MAC, "blocked"),
+        (3, None, "allowed"),
+        (4, PIHOLE_MAC, "allowed"),
+    ]
 
-    fake.add(4, now - 5, "c.example")
+    fake.add(5, now - 5, "c.example")
     assert source._poll() == 1
     assert source._poll() == 0
 
     # A new collector process picks up after the newest stored query.
-    fake.add(5, now - 1, "c.example")
+    fake.add(6, now - 1, "c.example")
     restarted = pihole.PiholeSource(db)
     assert restarted._poll() == 1
-    assert [r[0] for r in stored()] == [1, 2, 3, 4, 5]
+    assert [r[0] for r in stored()] == [1, 2, 3, 4, 5, 6]
 
     with get_sessionmaker()() as s:
         a = s.get(Domain, "a.example")
         assert (a.first_seen.timestamp(), a.last_seen.timestamp()) == pytest.approx(
             (now - 30, now - 10), abs=1e-3
         )
-        assert s.scalar(select(func.count()).select_from(Domain)) == 3
+        assert s.scalar(select(func.count()).select_from(Domain)) == 4
 
 
 @pytest.mark.db
