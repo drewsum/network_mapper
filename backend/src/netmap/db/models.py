@@ -20,6 +20,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 DEVICE_CATEGORIES = ("iot", "phone", "computer", "infrastructure", "media", "unknown")
 DNS_STATUSES = ("allowed", "blocked", "cached", "other")
 DEVICE_EVENT_KINDS = ("new_device", "online", "offline", "new_ip")
+# Discovery protocols that can name a device (see collector/names.py).
+NAME_SOURCES = ("dhcp", "mdns", "ssdp", "netbios", "rdns")
 
 
 class Base(DeclarativeBase):
@@ -83,6 +85,28 @@ class DeviceEvent(Base):
     mac: Mapped[str] = mapped_column(MACADDR, ForeignKey("devices.mac", ondelete="CASCADE"))
     kind: Mapped[str] = mapped_column(Text)
     ip: Mapped[str | None] = mapped_column(INET)
+
+
+class DeviceName(Base):
+    """What one discovery protocol says a device is called, and when it last said so."""
+
+    __tablename__ = "device_names"
+    __table_args__ = (
+        CheckConstraint(
+            "source IN (" + ", ".join(f"'{s}'" for s in NAME_SOURCES) + ")",
+            name="ck_device_names_source",
+        ),
+    )
+
+    mac: Mapped[str] = mapped_column(
+        MACADDR, ForeignKey("devices.mac", ondelete="CASCADE"), primary_key=True
+    )
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str | None] = mapped_column(Text)
+    # Protocol extras: DHCP fingerprint and vendor class, UPnP model and manufacturer.
+    details: Mapped[dict | None] = mapped_column(JSONB)
+    first_seen: Mapped[datetime] = _ts(server_default=func.now())
+    last_seen: Mapped[datetime] = _ts(server_default=func.now())
 
 
 class OuiVendor(Base):

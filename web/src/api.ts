@@ -8,6 +8,7 @@ export interface Device {
   mac: string;
   label: string | null;
   hostname: string | null;
+  hostname_source: string | null;
   vendor: string | null;
   is_randomized_mac: boolean;
   category: string;

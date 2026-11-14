@@ -4,7 +4,7 @@ import pytest
 
 from netmap.config import MissingSettingError, Settings, get_settings
 
-NETWORK_FIELDS = ["lan_cidr", "pihole_url", "pihole_password", "maxmind_license_key"]
+NETWORK_FIELDS = ["lan_cidr", "pihole_url", "rdns_server", "pihole_password", "maxmind_license_key"]
 
 
 def test_network_settings_have_no_defaults():
@@ -41,4 +41,15 @@ def test_require_raises_for_missing_setting():
 def test_database_url_is_required(monkeypatch):
     monkeypatch.delenv("NETMAP_DATABASE_URL")
     with pytest.raises(ValueError):
+        Settings()  # type: ignore[call-arg]
+
+
+def test_hostname_precedence_is_normalized(monkeypatch):
+    monkeypatch.setenv("NETMAP_HOSTNAME_PRECEDENCE", " DHCP, mdns,dhcp ")
+    assert Settings().hostname_sources == ["dhcp", "mdns"]  # type: ignore[call-arg]
+
+
+def test_hostname_precedence_rejects_unknown_sources(monkeypatch):
+    monkeypatch.setenv("NETMAP_HOSTNAME_PRECEDENCE", "dhcp,llmnr")
+    with pytest.raises(ValueError, match="llmnr"):
         Settings()  # type: ignore[call-arg]
