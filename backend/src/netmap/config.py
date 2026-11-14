@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     arp_sweep_interval_seconds: float = Field(default=120.0, ge=10)
     # A device goes offline when nothing has been heard from it for this long.
     device_offline_after_seconds: float = Field(default=600.0, ge=60)
+    # How old the MAC vendor registry may get before it's downloaded again from the IEEE.
+    oui_refresh_days: float = Field(default=7.0, ge=1)
 
     def require(self, name: str):
         value = getattr(self, name)

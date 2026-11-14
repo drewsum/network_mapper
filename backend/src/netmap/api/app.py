@@ -37,6 +37,7 @@ class DeviceOut(BaseModel):
     label: str | None
     hostname: str | None
     vendor: str | None
+    is_randomized_mac: bool
     category: str
     is_iot: bool
     online: bool

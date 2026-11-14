@@ -85,6 +85,17 @@ class DeviceEvent(Base):
     ip: Mapped[str | None] = mapped_column(INET)
 
 
+class OuiVendor(Base):
+    """IEEE MAC block registry, refreshed weekly by the collector (see netmap.oui)."""
+
+    __tablename__ = "oui_vendors"
+
+    prefix: Mapped[str] = mapped_column(Text, primary_key=True)
+    vendor: Mapped[str] = mapped_column(Text)
+    # Null for rows loaded from the bundled snapshot, so they count as due for refresh.
+    loaded_at: Mapped[datetime | None] = _ts()
+
+
 class DnsQuery(Base):
     """One DNS query as seen by Pi-hole. TimescaleDB hypertable on ``time``."""
 

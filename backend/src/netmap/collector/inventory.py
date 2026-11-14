@@ -4,11 +4,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select, tuple_, update
-from sqlalchemy.dialects.postgresql import distinct_on, insert
+from sqlalchemy import Text, case, cast, func, literal, select, tuple_, update
+from sqlalchemy.dialects.postgresql import MACADDR, distinct_on, insert
 from sqlalchemy.orm import Session
 
-from netmap.db.models import Device, DeviceEvent, DeviceIP
+from netmap.db.models import Device, DeviceEvent, DeviceIP, OuiVendor
+
+# The locally-administered bit: set on randomized (private) MACs, never on vendor-assigned ones.
+_LOCAL_BIT = literal("02:00:00:00:00:00", MACADDR)
+_NO_BITS = literal("00:00:00:00:00:00", MACADDR)
 
 
 @dataclass(frozen=True)
@@ -98,4 +102,29 @@ def record_sightings(
 
     if events:
         session.execute(insert(DeviceEvent).values(events))
+    new_macs = [e["mac"] for e in events if e["kind"] == "new_device"]
+    if new_macs:
+        apply_vendors(session, new_macs)
     session.commit()
+
+
+def apply_vendors(session: Session, macs: list[str] | None = None) -> None:
+    """Set vendor and is_randomized_mac from the MAC, for ``macs`` or every device.
+
+    Randomized MACs get no vendor: their prefix isn't an IEEE assignment. Doesn't commit.
+    """
+    randomized = Device.mac.op("&")(_LOCAL_BIT) != _NO_BITS
+    digits = func.replace(cast(Device.mac, Text), ":", "")
+    vendor = (
+        select(OuiVendor.vendor)
+        .where(OuiVendor.prefix.in_([func.left(digits, n) for n in (6, 7, 9)]))
+        .order_by(func.length(OuiVendor.prefix).desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    stmt = update(Device).values(
+        is_randomized_mac=randomized, vendor=case((randomized, None), else_=vendor)
+    )
+    if macs is not None:
+        stmt = stmt.where(Device.mac.in_(macs))
+    session.execute(stmt)
