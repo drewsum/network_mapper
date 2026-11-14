@@ -18,3 +18,9 @@ def test_allows_documentation_and_loopback(tmp_path):
     f = tmp_path / "x.py"
     f.write_text('a = "192.0.2.0/24"\nb = "127.0.0.1"\nc = "0.0.0.0"\nv = "version 1.2.3"\n')
     assert checker.violations(f) == []
+
+
+def test_allows_multicast_groups(tmp_path):
+    f = tmp_path / "x.py"
+    f.write_text('MDNS = "224.0.0.251"\nSSDP = "239.255.255.250"\n')
+    assert checker.violations(f) == []

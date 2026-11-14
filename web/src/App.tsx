@@ -29,7 +29,9 @@ export function App() {
           <tbody>
             {devices.data.map((d) => (
               <tr key={d.mac}>
-                <td>{d.label ?? d.hostname ?? "—"}</td>
+                <td title={!d.label && d.hostname_source ? `from ${d.hostname_source}` : undefined}>
+                  {d.label ?? d.hostname ?? "—"}
+                </td>
                 <td>
                   {d.category}
                   {d.is_iot && d.category !== "iot" ? " · IoT" : ""}

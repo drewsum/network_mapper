@@ -1,14 +1,14 @@
 """Device inventory updates from discovery sightings (MAC seen at IP, at a time)."""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import Text, case, cast, func, literal, select, tuple_, update
-from sqlalchemy.dialects.postgresql import MACADDR, distinct_on, insert
+from sqlalchemy import Text, case, cast, func, literal, or_, select, tuple_, update
+from sqlalchemy.dialects.postgresql import ARRAY, MACADDR, distinct_on, insert
 from sqlalchemy.orm import Session
 
-from netmap.db.models import Device, DeviceEvent, DeviceIP, OuiVendor
+from netmap.db.models import NAME_SOURCES, Device, DeviceEvent, DeviceIP, DeviceName, OuiVendor
 
 # The locally-administered bit: set on randomized (private) MACs, never on vendor-assigned ones.
 _LOCAL_BIT = literal("02:00:00:00:00:00", MACADDR)
@@ -18,6 +18,17 @@ _NO_BITS = literal("00:00:00:00:00:00", MACADDR)
 @dataclass(frozen=True)
 class Sighting:
     ip: str
+    seen_at: datetime
+
+
+@dataclass(frozen=True)
+class NameHint:
+    """A name (and/or protocol details) one discovery source reported for a device."""
+
+    mac: str
+    source: str
+    name: str | None
+    details: dict | None
     seen_at: datetime
 
 
@@ -124,6 +135,78 @@ def apply_vendors(session: Session, macs: list[str] | None = None) -> None:
     )
     stmt = update(Device).values(
         is_randomized_mac=randomized, vendor=case((randomized, None), else_=vendor)
+    )
+    if macs is not None:
+        stmt = stmt.where(Device.mac.in_(macs))
+    session.execute(stmt)
+
+
+def record_names(
+    session: Session, hints: Iterable[NameHint], precedence: Sequence[str]
+) -> set[str]:
+    """Store name hints and refresh the hostnames of the devices they name. Commits.
+
+    A missing name or detail never erases a known one. Hints for MACs that aren't in the
+    inventory yet are skipped; returns the MACs that were recorded.
+    """
+    hints = list(hints)
+    known = set(session.scalars(select(Device.mac).where(Device.mac.in_({h.mac for h in hints}))))
+    rows = [
+        {
+            "mac": h.mac,
+            "source": h.source,
+            "name": h.name,
+            "details": h.details,
+            "first_seen": h.seen_at,
+            "last_seen": h.seen_at,
+        }
+        for h in hints
+        if h.mac in known
+    ]
+    if rows:
+        stmt = insert(DeviceName).values(rows)
+        session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[DeviceName.mac, DeviceName.source],
+                set_={
+                    "name": func.coalesce(stmt.excluded.name, DeviceName.name),
+                    # Merged when both are set (NULL || x is NULL), else whichever is.
+                    "details": func.coalesce(
+                        DeviceName.details.op("||")(stmt.excluded.details),
+                        stmt.excluded.details,
+                        DeviceName.details,
+                    ),
+                    "last_seen": func.greatest(DeviceName.last_seen, stmt.excluded.last_seen),
+                },
+            )
+        )
+        apply_hostnames(session, precedence, sorted({r["mac"] for r in rows}))
+    session.commit()
+    return {r["mac"] for r in rows}
+
+
+def apply_hostnames(
+    session: Session, precedence: Sequence[str], macs: list[str] | None = None
+) -> None:
+    """Set hostname and hostname_source from the best-ranked named source. Doesn't commit.
+
+    Hostnames from elsewhere (the seeder) are left alone.
+    """
+    rank = func.array_position(literal(list(precedence), ARRAY(Text)), DeviceName.source)
+
+    def best(column):
+        return (
+            select(column)
+            .where(DeviceName.mac == Device.mac, DeviceName.name.is_not(None), rank.is_not(None))
+            .order_by(rank)
+            .limit(1)
+            .scalar_subquery()
+        )
+
+    stmt = (
+        update(Device)
+        .values(hostname=best(DeviceName.name), hostname_source=best(DeviceName.source))
+        .where(or_(Device.hostname_source.is_(None), Device.hostname_source.in_(NAME_SOURCES)))
     )
     if macs is not None:
         stmt = stmt.where(Device.mac.in_(macs))

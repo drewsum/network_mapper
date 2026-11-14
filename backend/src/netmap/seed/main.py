@@ -160,11 +160,11 @@ def seed(settings: Settings, days: int, reset: bool, rng_seed: int) -> None:
     now = datetime.now(UTC)
 
     with engine.begin() as conn:
-        if conn.execute(select(Device.mac).limit(1)).first() is not None:
-            if not reset:
-                raise SystemExit("database already has devices; rerun with --reset to wipe it")
+        if reset:
             conn.execute(text(f"TRUNCATE {', '.join(SEEDED_TABLES)} CASCADE"))
             log.info("wiped existing data")
+        elif conn.execute(select(Device.mac).limit(1)).first() is not None:
+            raise SystemExit("database already has devices; rerun with --reset to wipe it")
 
         data = build(lan_cidr, now, rng)
         conn.execute(insert(Device), data.devices)

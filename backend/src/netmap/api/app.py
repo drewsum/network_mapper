@@ -36,6 +36,7 @@ class DeviceOut(BaseModel):
     mac: str
     label: str | None
     hostname: str | None
+    hostname_source: str | None
     vendor: str | None
     is_randomized_mac: bool
     category: str

@@ -1,8 +1,9 @@
 """Fail if a tracked file contains a hardcoded IP address.
 
 Network-specific values must come from env vars (see backend/src/netmap/config.py).
-Allowed: loopback, unspecified (0.0.0.0) and the RFC 5737 / RFC 3849 documentation ranges
-used in tests and examples. Usage: python scripts/check_hardcoded_ips.py [files...]
+Allowed: loopback, unspecified (0.0.0.0), multicast (protocol-defined groups such as mDNS's,
+the same on every network) and the RFC 5737 / RFC 3849 documentation ranges used in tests
+and examples. Usage: python scripts/check_hardcoded_ips.py [files...]
 """
 
 import ipaddress
@@ -16,7 +17,10 @@ SKIP_SUFFIXES = {".png", ".jpg", ".ico", ".svg", ".woff", ".woff2", ".lock"}
 IPV4 = re.compile(r"(?<![\w.])(\d{1,3}(?:\.\d{1,3}){3})(?:/\d{1,2})?(?![\w.])")
 ALLOWED = [
     ipaddress.ip_network(n)
-    for n in ("127.0.0.0/8", "0.0.0.0/32", "192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")
+    for n in (
+        "127.0.0.0/8", "0.0.0.0/32", "224.0.0.0/4",
+        "192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24",
+    )  # fmt: skip
 ]
 
 

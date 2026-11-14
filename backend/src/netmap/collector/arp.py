@@ -20,6 +20,7 @@ from ipaddress import IPv4Address, IPv4Network
 
 from netmap.collector.base import Source
 from netmap.collector.inventory import Sighting, known_addresses, record_sightings
+from netmap.collector.protocols import format_mac
 from netmap.db import get_sessionmaker
 
 log = logging.getLogger(__name__)
@@ -40,10 +41,6 @@ REPLY_WAIT = 3.0
 SEND_GAP = 0.005
 # Larger networks are only listened to: a sweep would take longer than the interval.
 MAX_SWEEP_ADDRESSES = 1024
-
-
-def format_mac(raw: bytes) -> str:
-    return ":".join(f"{b:02x}" for b in raw)
 
 
 def build_request(
