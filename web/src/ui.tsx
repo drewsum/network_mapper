@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, CATEGORIES, type Category, type DeviceUpdate } from "./api";
+import { api, BLOCKLIST_LABELS, CATEGORIES, type Category, type DeviceUpdate, threats } from "./api";
 
 export function ago(iso: string): string {
   const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -106,6 +106,17 @@ export function Status({ online, lastSeen }: { online: boolean; lastSeen: string
   ) : (
     <span className="status off" title={dateTime(lastSeen)}>
       offline · {ago(lastSeen)}
+    </span>
+  );
+}
+
+/** A red "threat" tag when a domain is on a threat blocklist, naming the lists. */
+export function ThreatTag({ lists }: { lists: string[] }) {
+  const hits = threats(lists);
+  if (hits.length === 0) return null;
+  return (
+    <span className="tag bad" title={`On ${hits.map((l) => BLOCKLIST_LABELS[l] ?? l).join(", ")}`}>
+      threat
     </span>
   );
 }

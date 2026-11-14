@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from netmap import orgs
 from netmap.api.deps import DB
+from netmap.collector.categories import assign_categories
 from netmap.collector.orgs import assign_organizations, classifier
 from netmap.db.models import Domain, OrgRule
 
@@ -84,6 +85,7 @@ def save_rule(rule: OrgRuleIn, db: DB) -> OrgRuleSaved:
     ).one()
     out = OrgRuleOut.model_validate(saved)
     regrouped = assign_organizations(db)  # commits
+    assign_categories(db)  # an organization's category follows it
     return OrgRuleSaved(**out.model_dump(), regrouped=regrouped)
 
 
@@ -97,4 +99,5 @@ def delete_rule(rule_id: int, db: DB) -> OrgRuleSaved:
     db.delete(rule)
     db.flush()
     regrouped = assign_organizations(db)  # commits
+    assign_categories(db)
     return OrgRuleSaved(**out.model_dump(), regrouped=regrouped)

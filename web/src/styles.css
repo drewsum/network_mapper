@@ -101,6 +101,8 @@ tr.offline td { color: var(--muted); }
 .editable:hover { border-color: var(--line); }
 .edit-input { padding: 2px 4px; }
 .category { padding: 2px 4px; font-size: 13px; }
+/* On a threat blocklist. */
+.tag.bad { background: var(--bad); color: #fff; }
 .tag {
   display: inline-block;
   font-size: 11px;

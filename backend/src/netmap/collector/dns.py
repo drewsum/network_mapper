@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from ipaddress import ip_address
 from typing import Protocol
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -79,13 +79,19 @@ def record_queries(
         )
         inserted += len(session.execute(stmt).all())
 
+    # domain -> [first seen, last seen, whether that last query was blocked]
     seen: dict[str, list] = {}
     for q in queries:
-        span = seen.setdefault(q.domain, [q.time, q.time])
-        span[0], span[1] = min(span[0], q.time), max(span[1], q.time)
+        span = seen.setdefault(q.domain, [q.time, q.time, q.status == "blocked"])
+        span[0] = min(span[0], q.time)
+        if q.time >= span[1]:
+            span[1], span[2] = q.time, q.status == "blocked"
     if seen:
         stmt = insert(Domain).values(
-            [{"domain": d, "first_seen": lo, "last_seen": hi} for d, (lo, hi) in seen.items()]
+            [
+                {"domain": d, "first_seen": lo, "last_seen": hi, "pihole_blocked": blocked}
+                for d, (lo, hi, blocked) in seen.items()
+            ]
         )
         session.execute(
             stmt.on_conflict_do_update(
@@ -93,6 +99,10 @@ def record_queries(
                 set_={
                     "first_seen": func.least(Domain.first_seen, stmt.excluded.first_seen),
                     "last_seen": func.greatest(Domain.last_seen, stmt.excluded.last_seen),
+                    "pihole_blocked": case(
+                        (stmt.excluded.last_seen >= Domain.last_seen, stmt.excluded.pihole_blocked),
+                        else_=Domain.pihole_blocked,
+                    ),
                 },
             )
         )

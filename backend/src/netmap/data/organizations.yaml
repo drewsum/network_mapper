@@ -9,7 +9,8 @@
 # domain on AWS counts as Tuya), and the network entries only name the host of domains
 # nobody claims. Amazon's own services and AWS-hosted ones are kept apart for that reason.
 #
-# Each suffix and each ASN may appear under one organization only. Rules added in the app
+# Each organization has a category (see netmap/categories.py): "vendor" unless it says
+# otherwise. Each suffix and each ASN may appear under one organization only. Rules added in the app
 # (Organizations page) take precedence over this file.
 
 Amazon:
@@ -19,6 +20,7 @@ Amazon:
             images-amazon.com, ssl-images-amazon.com, amazon-adsystem.com, audible.com,
             ring.com, eero.com, blinkforhome.com, immedia-semi.com]
 AWS:
+  category: cdn
   domains: [amazonaws.com, amazonaws.com.cn, aws.amazon.com, awsstatic.com, cloudfront.net,
             elasticbeanstalk.com]
   asns: [16509, 14618, 8987]
@@ -33,6 +35,7 @@ Google:
             withgoogle.com, 1e100.net, nest.com, dropcam.com, fitbit.com, waze.com]
   asns: [15169, 19527, 36040, 43515]
 Google Cloud:
+  category: cdn
   domains: [appspot.com, firebaseapp.com, web.app, run.app, cloudfunctions.net]
   asns: [396982]
 Microsoft:
@@ -166,68 +169,93 @@ Garmin:
 
 # Analytics, ads and app SDKs
 AppsFlyer:
+  category: analytics
   domains: [appsflyer.com, appsflyersdk.com]
 AppLovin:
+  category: ads
   domains: [applovin.com, applvn.com]
 Braze:
+  category: analytics
   domains: [braze.com, braze.eu]
 Sentry:
+  category: analytics
   domains: [sentry.io]
 Bugsnag:
+  category: analytics
   domains: [bugsnag.com]
 Adjust:
+  category: analytics
   domains: [adjust.com]
   asns: [205184]
 
 # Internet plumbing
 Let's Encrypt:
+  category: infrastructure
   domains: [letsencrypt.org, lencr.org]
 DigiCert:
+  category: infrastructure
   domains: [digicert.com]
 GlobalSign:
+  category: infrastructure
   domains: [globalsign.com]
 NTP Pool:
+  category: infrastructure
   domains: [ntp.org]
 
 # CDNs and hosting: name the host of domains no entry above claims
 Cloudflare:
+  category: cdn
   domains: [cloudflare.com, cloudflare.net, cloudflare-dns.com, cloudflareinsights.com,
             cloudflareclient.com, cloudflarestream.com, argotunnel.com, trycloudflare.com,
             one.one.one.one, workers.dev, pages.dev]
   asns: [13335, 209242]
 Akamai:
+  category: cdn
   domains: [akamai.com, akamai.net, akamaiedge.net, akamaihd.net, akamaized.net,
             akamaitechnologies.com, akadns.net, edgekey.net, edgesuite.net, go-mpulse.net,
             linode.com]
   asns: [20940, 16625, 33905, 12222, 35994, 63949]
 Fastly:
+  category: cdn
   domains: [fastly.com, fastly.net, fastlylb.net, fastly-edge.com]
   asns: [54113]
 CDN77:
+  category: cdn
   asns: [60068, 212238]
 Edgio:
+  category: cdn
   asns: [15133, 22822]
 CacheFly:
+  category: cdn
   asns: [30081]
 G-Core:
+  category: cdn
   asns: [199524]
 DigitalOcean:
+  category: cdn
   domains: [digitalocean.com, digitaloceanspaces.com]
   asns: [14061]
 Hetzner:
+  category: cdn
   asns: [24940]
 OVH:
+  category: cdn
   asns: [16276]
 Vultr:
+  category: cdn
   asns: [20473]
 Leaseweb:
+  category: cdn
   asns: [60781]
 Fly.io:
+  category: cdn
   domains: [fly.dev, fly.io]
   asns: [40509]
 Alibaba Cloud:
+  category: cdn
   domains: [aliyuncs.com, alicdn.com]
   asns: [45102, 37963]
 Tencent Cloud:
+  category: cdn
   domains: [tencentcloudapi.com, myqcloud.com]
   asns: [132203, 45090]

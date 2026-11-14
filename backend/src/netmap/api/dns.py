@@ -32,7 +32,8 @@ class DeviceDomain(BaseModel):
     last_seen: datetime  # latest query in the range
     new: bool  # first seen within the range
     organization: str | None
-    category: str | None
+    category: str | None  # see netmap/categories.py
+    blocklists: list[str]  # lists it's on, "pihole" included (netmap/blocklists.py)
     country: str | None  # ISO code, where its most recently seen public IP is
     asn: int | None
     asn_org: str | None  # the network that IP belongs to
@@ -76,7 +77,7 @@ SELECT p.domain, p.queries, p.blocked, p.last_seen,
         WHERE q.mac = :mac AND q.domain = p.domain) AS raw_first,
        (SELECT min(a.bucket) FROM dns_activity_1d a
         WHERE a.mac = :mac AND a.domain = p.domain) AS day_first,
-       d.organization, d.category, d.country, d.asn, d.asn_org
+       d.organization, d.category, d.blocklists, d.country, d.asn, d.asn_org
 FROM page p LEFT JOIN domains d ON d.domain = p.domain
 ORDER BY {order}
 """
@@ -136,6 +137,7 @@ def device_domains(
                 new=first >= start,
                 organization=r.organization,
                 category=r.category,
+                blocklists=r.blocklists or [],
                 country=r.country,
                 asn=r.asn,
                 asn_org=r.asn_org,

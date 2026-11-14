@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { api, type OrgRuleKind, type OrgRuleSaved } from "./api";
-import { dateTime } from "./ui";
+import {
+  api,
+  BLOCKLIST_LABELS,
+  DOMAIN_CATEGORY_LABELS,
+  type OrgRuleKind,
+  type OrgRuleSaved,
+  threats,
+} from "./api";
+import { ago, dateTime } from "./ui";
 
 export function OrganizationsPage() {
   return (
@@ -9,7 +16,9 @@ export function OrganizationsPage() {
       <a href="#/" className="back">
         ← All devices
       </a>
-      <h1 className="title">Organizations</h1>
+      <h1 className="title">Domains</h1>
+      <Blocklists />
+      <Categories />
       <Rules />
       <Groups />
     </article>
@@ -22,6 +31,7 @@ function useRegroup() {
     void client.invalidateQueries({ queryKey: ["orgRules"] });
     void client.invalidateQueries({ queryKey: ["organizations"] });
     void client.invalidateQueries({ queryKey: ["domains"] });
+    void client.invalidateQueries({ queryKey: ["domainCategories"] });
     return saved.regrouped;
   };
 }
@@ -56,7 +66,7 @@ function Rules() {
   };
   return (
     <section className="card">
-      <h2>Your rules</h2>
+      <h2>Organization rules</h2>
       <p className="muted">
         A domain's organization comes from the built-in map: its longest matching domain suffix,
         else the network (AS number) its IP is in. Anything unmatched is grouped as Other. Rules
@@ -144,6 +154,111 @@ function Groups() {
               <tr key={o.name}>
                 <td>{o.name}</td>
                 <td>{o.domains.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function Categories() {
+  const cats = useQuery({ queryKey: ["domainCategories"], queryFn: api.domainCategories });
+  return (
+    <section className="card">
+      <h2>Domains by category</h2>
+      <p className="muted">
+        Ad and analytics services come from a built-in list and from words in the name (ads.,
+        telemetry., metrics.). Domains Pi-hole blocks count as ads and trackers. The rest take their
+        organization's kind: a vendor's cloud, a CDN or hosting network, or Unknown for Other.
+      </p>
+      {cats.error && <p className="error">{cats.error.message}</p>}
+      {cats.data && (
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Domains</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cats.data.map((c) => (
+              <tr key={c.category}>
+                <td>{c.label}</td>
+                <td>{c.domains.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function Blocklists() {
+  const bl = useQuery({ queryKey: ["blocklists"], queryFn: api.blocklists });
+  const data = bl.data;
+  return (
+    <section className="card">
+      <h2>Threat blocklists</h2>
+      <p className="muted">
+        A domain is flagged when it, or an IP it resolved to, is on one of these lists. Each is
+        downloaded again daily.
+      </p>
+      {bl.error && <p className="error">{bl.error.message}</p>}
+      {data && (
+        <table>
+          <thead>
+            <tr>
+              <th>List</th>
+              <th>Entries</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.lists.map((l) => (
+              <tr key={l.name}>
+                <td>
+                  <a href={l.url} target="_blank" rel="noreferrer">
+                    {l.label}
+                  </a>
+                </td>
+                <td>{l.entries?.toLocaleString() ?? "—"}</td>
+                <td className="muted">
+                  {l.needs_key ? (
+                    "Needs NETMAP_ABUSECH_AUTH_KEY"
+                  ) : l.refreshed_at ? (
+                    <span title={dateTime(l.refreshed_at)}>{ago(l.refreshed_at)}</span>
+                  ) : (
+                    "Not downloaded yet"
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {data?.flagged.length === 0 && <p className="muted small">No domains on a threat list.</p>}
+      {data && data.flagged.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>Flagged domain</th>
+              <th>Lists</th>
+              <th>Organization</th>
+              <th>Category</th>
+              <th>Last seen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.flagged.map((d) => (
+              <tr key={d.domain}>
+                <td className="domain">{d.domain}</td>
+                <td>{threats(d.blocklists).map((l) => BLOCKLIST_LABELS[l] ?? l).join(", ")}</td>
+                <td>{d.organization ?? "—"}</td>
+                <td>{d.category ? (DOMAIN_CATEGORY_LABELS[d.category] ?? d.category) : "—"}</td>
+                <td title={dateTime(d.last_seen)}>{ago(d.last_seen)}</td>
               </tr>
             ))}
           </tbody>
