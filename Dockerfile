@@ -23,6 +23,11 @@ RUN uv sync --frozen --no-dev
 COPY --from=web /web/dist /app/web-dist
 ENV NETMAP_WEB_DIST_DIR=/app/web-dist
 
+# The collector's raw ARP socket needs CAP_NET_RAW, but Docker only grants cap_add
+# capabilities to root. This copy of the interpreter carries it as a file capability and is
+# used by the collector alone; the API and the other roles run the plain interpreter.
+RUN apt-get update && apt-get install -y --no-install-recommends libcap2-bin  && cp "$(readlink -f /app/.venv/bin/python)" /app/.venv/bin/python-netraw  && setcap cap_net_raw+ep /app/.venv/bin/python-netraw  && apt-get purge -y libcap2-bin && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --system --uid 10001 netmap
 USER netmap
 EXPOSE 8000

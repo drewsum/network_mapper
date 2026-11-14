@@ -8,6 +8,9 @@
 x-netmap-env: &netmap-env
   NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
   NETMAP_LAN_CIDR: ${NETMAP_LAN_CIDR:-}
+  NETMAP_LAN_IFACE: ${NETMAP_LAN_IFACE:-}
+  NETMAP_ARP_SWEEP_INTERVAL_SECONDS: ${NETMAP_ARP_SWEEP_INTERVAL_SECONDS:-}
+  NETMAP_DEVICE_OFFLINE_AFTER_SECONDS: ${NETMAP_DEVICE_OFFLINE_AFTER_SECONDS:-}
   NETMAP_PIHOLE_URL: ${NETMAP_PIHOLE_URL:-}
   NETMAP_PIHOLE_PASSWORD: ${NETMAP_PIHOLE_PASSWORD:-}
   NETMAP_MAXMIND_LICENSE_KEY: ${NETMAP_MAXMIND_LICENSE_KEY:-}
@@ -68,11 +71,13 @@ services:
 
   collector:
     <<: *app
-    command: ["netmap", "collector"]
+    # python-netraw carries CAP_NET_RAW as a file capability (see Dockerfile), since the
+    # image's non-root user doesn't get cap_add capabilities on its own.
+    command: ["python-netraw", "-m", "netmap.cli", "collector"]
     # Host networking so discovery sees the real LAN (ARP, mDNS, DHCP broadcasts).
     # The db service isn't reachable by name from here, so use its loopback port.
     network_mode: host
-    cap_add: [NET_RAW, NET_ADMIN]
+    cap_add: [NET_RAW]
     environment:
       <<: *netmap-env
       NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${NETMAP_DB_PUBLISH_PORT:-5433}/${POSTGRES_DB}

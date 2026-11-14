@@ -12,7 +12,7 @@ web container.
 | `db` | bridge, DB port published on `127.0.0.1` only | TimescaleDB, data in `${NETMAP_DATA_DIR}/db` |
 | `migrate` | bridge | one-off: migrations + retention policies, then exits |
 | `api` | bridge, `${NETMAP_API_PUBLISH_PORT}` published | API + UI |
-| `collector` | host (`NET_RAW`, `NET_ADMIN`) | LAN discovery; reaches the DB on its loopback port |
+| `collector` | host, `NET_RAW` | LAN discovery (ARP sweep + passive listening); reaches the DB on its loopback port |
 
 ## One-time setup
 

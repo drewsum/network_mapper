@@ -28,6 +28,8 @@ class Settings(BaseSettings):
 
     # Network-specific: no defaults on purpose.
     lan_cidr: IPv4Network | None = None
+    # Interface on lan_cidr for ARP discovery; found automatically when unset.
+    lan_iface: str | None = None
     pihole_url: str | None = None
     pihole_password: SecretStr | None = None
     maxmind_license_key: SecretStr | None = None
@@ -47,6 +49,9 @@ class Settings(BaseSettings):
 
     collector_heartbeat_file: str = "/tmp/netmap-collector-heartbeat"
     collector_tick_seconds: float = Field(default=10.0, gt=0)
+    arp_sweep_interval_seconds: float = Field(default=120.0, ge=10)
+    # A device goes offline when nothing has been heard from it for this long.
+    device_offline_after_seconds: float = Field(default=600.0, ge=60)
 
     def require(self, name: str):
         value = getattr(self, name)
