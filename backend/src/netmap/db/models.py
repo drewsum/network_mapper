@@ -116,6 +116,15 @@ class DeviceName(Base):
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
 
 
+class AppSecret(Base):
+    """Random secrets the app generates for itself, such as the session signing key."""
+
+    __tablename__ = "app_secrets"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
 class OuiVendor(Base):
     """IEEE MAC block registry, refreshed weekly by the collector (see netmap.oui)."""
 
