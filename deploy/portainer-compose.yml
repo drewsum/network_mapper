@@ -1,5 +1,6 @@
 # Server stack, deployed by Portainer as a Git-repository stack (see docs/deploy-portainer.md).
-# All settings come from the stack's env vars, which Portainer writes to stack.env.
+# All settings come from the stack's env vars, which Portainer writes to stack.env at the
+# repo root (hence ../stack.env).
 # The image is built on the host from this repo; the API also serves the built UI.
 
 x-app: &app
@@ -9,7 +10,7 @@ x-app: &app
   image: netmap:local
   # Rebuild on every deploy so a git redeploy picks up new code.
   pull_policy: build
-  env_file: stack.env
+  env_file: ../stack.env
   environment:
     NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
   restart: unless-stopped
@@ -17,7 +18,7 @@ x-app: &app
 services:
   db:
     image: timescale/timescaledb:2.17.2-pg16
-    env_file: stack.env
+    env_file: ../stack.env
     volumes:
       - ${NETMAP_DATA_DIR:?set NETMAP_DATA_DIR to the project dataset path}/db:/var/lib/postgresql/data
     # Loopback only: for the host-networked collector and for tools over SSH.
