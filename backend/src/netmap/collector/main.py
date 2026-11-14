@@ -9,6 +9,7 @@ from netmap.collector.arp import ArpSource
 from netmap.collector.base import Source
 from netmap.collector.geoip import GeoipSource
 from netmap.collector.names import NameSource
+from netmap.collector.orgs import OrganizationSource
 from netmap.collector.pihole import PiholeSource
 from netmap.collector.ports import PortScanSource
 from netmap.collector.upnp import UpnpSource
@@ -26,6 +27,7 @@ SOURCE_TYPES: list[type[Source]] = [
     UpnpSource,
     PiholeSource,
     GeoipSource,
+    OrganizationSource,
 ]
 
 

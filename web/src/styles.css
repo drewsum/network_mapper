@@ -158,3 +158,5 @@ tr.chosen td { font-weight: 550; }
 .segmented button.on { background: var(--accent-soft); color: var(--accent); font-weight: 550; }
 td.domain { overflow-wrap: anywhere; }
 td.blocked { color: var(--bad); }
+.rule-form { margin: 0 0 10px; }
+.rule-form input { flex: 1 1 180px; min-width: 0; }
