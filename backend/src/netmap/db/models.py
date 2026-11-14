@@ -19,6 +19,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 DEVICE_CATEGORIES = ("iot", "phone", "computer", "infrastructure", "media", "unknown")
 DNS_STATUSES = ("allowed", "blocked", "cached", "other")
+DEVICE_EVENT_KINDS = ("new_device", "online", "offline", "new_ip")
 
 
 class Base(DeclarativeBase):
@@ -63,6 +64,25 @@ class DeviceIP(Base):
     ip: Mapped[str] = mapped_column(INET, primary_key=True)
     first_seen: Mapped[datetime] = _ts(server_default=func.now())
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
+
+
+class DeviceEvent(Base):
+    """Device history: first sighting, online/offline transitions, new IPs."""
+
+    __tablename__ = "device_events"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN (" + ", ".join(f"'{k}'" for k in DEVICE_EVENT_KINDS) + ")",
+            name="ck_device_events_kind",
+        ),
+        Index("ix_device_events_mac_time", "mac", "time"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    time: Mapped[datetime] = _ts()
+    mac: Mapped[str] = mapped_column(MACADDR, ForeignKey("devices.mac", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(Text)
+    ip: Mapped[str | None] = mapped_column(INET)
 
 
 class DnsQuery(Base):

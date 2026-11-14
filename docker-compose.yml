@@ -49,8 +49,9 @@ services:
   collector:
     <<: *app
     command: ["netmap", "collector"]
-    # On TrueNAS/Linux the collector will need network_mode: host + NET_RAW (from M1);
-    # Docker Desktop can't see the real LAN, so dev keeps the default bridge network.
+    # Docker Desktop can't see the real LAN, so dev keeps the bridge network and ARP
+    # discovery disables itself (no interface on NETMAP_LAN_CIDR). The server stack runs the
+    # collector with host networking and CAP_NET_RAW: deploy/portainer-compose.yml.
     healthcheck:
       test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/netmap-collector-heartbeat') > 60)"]
       interval: 15s
