@@ -8,8 +8,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select, text
 
+from netmap.api.app import create_app
 from netmap.cli import main
 from netmap.collector import pihole
 from netmap.collector.dns import record_queries
@@ -28,6 +30,8 @@ class FakePihole:
         self.sids: set[str] = set()
         self.logins = 0
         self.v5 = False
+        self.log: list[dict] = []  # dnsmasq log lines; a line's ID is its index
+        self.pid = 1
         self.lock = threading.Lock()
 
     def add(self, qid, at, domain, client="192.0.2.44", status="FORWARDED", qtype="A"):
@@ -76,6 +80,12 @@ class FakePihole:
                 if self.headers.get("X-FTL-SID") not in fake.sids:
                     return self._send(401, {"error": {"key": "unauthorized", "message": "x"}})
                 q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
+                if urlsplit(self.path).path == "/api/logs/dnsmasq":
+                    start = int(q["nextID"])
+                    return self._send(
+                        200,
+                        {"log": fake.log[start:], "nextID": len(fake.log), "pid": fake.pid},
+                    )
                 lo, hi = float(q["from"]), float(q["until"])
                 start, length = int(q["start"]), int(q["length"])
                 cursor = int(q.get("cursor", max((r["id"] for r in fake.queries), default=0)))
@@ -145,7 +155,7 @@ def test_bad_password_and_v5_are_explained(fake):
 def db(db_env, monkeypatch, fake):
     main(["migrate"])
     with get_engine().begin() as conn:
-        conn.execute(text("TRUNCATE devices, dns_queries, domains CASCADE"))
+        conn.execute(text("TRUNCATE devices, dns_queries, domains, domain_ips CASCADE"))
     with get_sessionmaker()() as s:
         s.execute(insert(Device), [{"mac": PHONE_MAC}])
         s.execute(insert(DeviceIP), [{"mac": PHONE_MAC, "ip": "192.0.2.44"}])
@@ -223,3 +233,46 @@ def test_record_queries_ignores_repeats(db):
     with get_sessionmaker()() as s:
         assert record_queries(s, [q]) == 1
         assert record_queries(s, [q]) == 0
+
+
+def log_line(at, message):
+    return {"timestamp": at, "message": message, "prio": None}
+
+
+@pytest.mark.db
+def test_answers_build_the_domain_ip_map(db, fake):
+    now = time.time()
+    fake.add(1, now - 30, "www.shop.example")
+    fake.log += [
+        log_line(now - 30, "query[A] www.shop.example from 192.0.2.44"),
+        log_line(now - 30, "reply www.shop.example is <CNAME>"),
+        log_line(now - 30, "reply edge.cdn.example is 203.0.113.1"),
+        log_line(now - 20, "cached other.example is 203.0.113.1"),
+    ]
+    source = pihole.PiholeSource(db)
+    source._poll()
+    fake.log.append(log_line(now - 5, "reply www.shop.example is 203.0.113.2"))
+    source._poll()
+
+    # FTL restarted: its log IDs begin again, so the poller rereads from the start.
+    fake.pid, fake.log = 2, [log_line(now - 1, "reply fresh.example is 203.0.113.3")]
+    source._poll()
+
+    client = TestClient(create_app())
+    shop = client.get("/api/domains/WWW.Shop.Example./ips").json()
+    assert [r["ip"] for r in shop] == ["203.0.113.2", "203.0.113.1"]  # newest first
+    on_ip = client.get("/api/ips/203.0.113.1/domains").json()
+    assert sorted(r["domain"] for r in on_ip) == [
+        "edge.cdn.example",
+        "other.example",
+        "www.shop.example",
+    ]
+    assert [r["domain"] for r in client.get("/api/ips/203.0.113.3/domains").json()] == [
+        "fresh.example"
+    ]
+
+    # A time window keeps pairs seen at some point inside it.
+    since = datetime.fromtimestamp(now - 10, UTC).isoformat()
+    recent = client.get("/api/domains/www.shop.example/ips", params={"start": since}).json()
+    assert [r["ip"] for r in recent] == ["203.0.113.2"]
+    assert client.get("/api/ips/not-an-ip/domains").status_code == 422
