@@ -116,6 +116,25 @@ export interface DeviceDomainPage {
 
 export type DomainSort = "queries" | "last_seen" | "domain";
 
+export interface Organization {
+  name: string;
+  domains: number;
+}
+
+export type OrgRuleKind = "suffix" | "asn";
+
+export interface OrgRule {
+  id: number;
+  kind: OrgRuleKind;
+  value: string;
+  organization: string;
+  created_at: string;
+}
+
+export interface OrgRuleSaved extends OrgRule {
+  regrouped: number;
+}
+
 export type DeviceUpdate = Partial<Pick<Device, "label" | "category" | "is_iot" | "notes">>;
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -161,6 +180,11 @@ export const api = {
     request<DeviceDetail>("PATCH", `/api/devices/${mac}`, changes),
   mergeDevice: (mac: string, into: string) =>
     request<DeviceDetail>("POST", `/api/devices/${mac}/merge`, { into }),
+  organizations: () => get<Organization[]>("/api/organizations"),
+  orgRules: () => get<OrgRule[]>("/api/org-rules"),
+  saveOrgRule: (rule: Pick<OrgRule, "kind" | "value" | "organization">) =>
+    request<OrgRuleSaved>("POST", "/api/org-rules", rule),
+  deleteOrgRule: (id: number) => request<OrgRuleSaved>("DELETE", `/api/org-rules/${id}`),
 };
 
 /** What to call a device: the owner's label, else what it calls itself, else its maker. */

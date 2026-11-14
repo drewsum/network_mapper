@@ -1,0 +1,233 @@
+# Which organization a domain belongs to (see netmap/orgs.py).
+#
+# For each domain, the longest matching suffix decides: "s3.amazonaws.com" and
+# "amazonaws.com" both match the entry amazonaws.com. A domain with no match takes the
+# organization of the network (ASN) its most recently seen IP is in. Domains that match
+# neither are grouped as "Other".
+#
+# So an organization's own domains name it even when a cloud or CDN hosts them (a Tuya
+# domain on AWS counts as Tuya), and the network entries only name the host of domains
+# nobody claims. Amazon's own services and AWS-hosted ones are kept apart for that reason.
+#
+# Each suffix and each ASN may appear under one organization only. Rules added in the app
+# (Organizations page) take precedence over this file.
+
+Amazon:
+  domains: [amazon.com, amazon.ca, amazon.co.uk, amazon.de, amazon.co.jp, amazon.dev,
+            amazonalexa.com, alexa.com, a2z.com, amazontrust.com, amazonvideo.com,
+            primevideo.com, aiv-cdn.net, aiv-delivery.net, media-amazon.com,
+            images-amazon.com, ssl-images-amazon.com, amazon-adsystem.com, audible.com,
+            ring.com, eero.com, blinkforhome.com, immedia-semi.com]
+AWS:
+  domains: [amazonaws.com, amazonaws.com.cn, aws.amazon.com, awsstatic.com, cloudfront.net,
+            elasticbeanstalk.com]
+  asns: [16509, 14618, 8987]
+Google:
+  domains: [google.com, google.ca, google.co.uk, google.de, googleapis.com, gstatic.com,
+            gvt1.com, gvt2.com, gvt3.com, googlevideo.com, googleusercontent.com,
+            youtube.com, youtu.be, ytimg.com, youtube-nocookie.com, ggpht.com,
+            doubleclick.net, googlesyndication.com, googleadservices.com,
+            google-analytics.com, googletagmanager.com, googletagservices.com,
+            app-measurement.com, crashlytics.com, firebaseio.com, firebase.com,
+            android.com, googlezip.net, gmail.com, googlemail.com, chromium.org,
+            withgoogle.com, 1e100.net, nest.com, dropcam.com, fitbit.com, waze.com]
+  asns: [15169, 19527, 36040, 43515]
+Google Cloud:
+  domains: [appspot.com, firebaseapp.com, web.app, run.app, cloudfunctions.net]
+  asns: [396982]
+Microsoft:
+  domains: [microsoft.com, microsoftonline.com, windows.com, windows.net, windowsupdate.com,
+            msedge.net, office.com, office.net, office365.com, outlook.com, live.com,
+            live.net, msn.com, bing.com, bingapis.com, cloud.microsoft, static.microsoft,
+            microsoft.us, msftncsi.com, msftconnecttest.com, msftauth.net, msauth.net,
+            msocsp.com, footprintdns.com, trafficmanager.net, s-microsoft.com, gfx.ms,
+            sfx.ms, aka.ms, visualstudio.com, vsassets.io, azure.com, azureedge.net,
+            azurefd.net, sharepoint.com, onedrive.com, skype.com, xbox.com, xboxlive.com]
+  asns: [8068, 8069, 8070, 8075, 12076]
+LinkedIn:
+  domains: [linkedin.com, licdn.com]
+Apple:
+  domains: [apple.com, icloud.com, icloud-content.com, me.com, mzstatic.com, itunes.com,
+            apple-cloudkit.com, cdn-apple.com, aaplimg.com, apple-dns.net, apple.news]
+  asns: [714, 6185]
+Meta:
+  domains: [facebook.com, facebook.net, fb.com, fbcdn.net, fbsbx.com, instagram.com,
+            cdninstagram.com, whatsapp.com, whatsapp.net, messenger.com, threads.net,
+            meta.com, oculus.com]
+  asns: [32934, 63293]
+Netflix:
+  domains: [netflix.com, netflix.net, nflxvideo.net, nflximg.net, nflxext.com, nflxso.net]
+  asns: [2906, 40027]
+Spotify:
+  domains: [spotify.com, scdn.co, spotifycdn.com, pscdn.co]
+  asns: [8403]
+X (Twitter):
+  domains: [twitter.com, x.com, twimg.com, t.co]
+  asns: [13414]
+TikTok:
+  domains: [tiktok.com, tiktokv.com, tiktokcdn.com, tiktokcdn-us.com, ttwstatic.com,
+            byteoversea.com, ibytedtos.com, musical.ly]
+Snap:
+  domains: [snapchat.com, snap.com, snapkit.com, sc-cdn.net, sc-static.net, snapads.com]
+Reddit:
+  domains: [reddit.com, redd.it, redditmedia.com, redditstatic.com, devvit.net]
+Twitch:
+  domains: [twitch.tv, ttvnw.net, jtvnw.net]
+Disney:
+  domains: [disneyplus.com, disney-plus.net, bamgrid.com, dssott.com]
+Hulu:
+  domains: [hulu.com, hulustream.com, huluim.com]
+Zoom:
+  domains: [zoom.us, zoom.com]
+Dropbox:
+  domains: [dropbox.com, dropboxapi.com, dropboxstatic.com]
+Adobe:
+  domains: [adobe.com, adobe.io, adobelogin.com, adobedtm.com, demdex.net, omtrdc.net,
+            typekit.net]
+Autodesk:
+  domains: [autodesk.com]
+Anthropic:
+  domains: [anthropic.com, claude.ai, claude.com, claudeusercontent.com]
+  asns: [399358]
+GitHub:
+  domains: [github.com, github.io, githubusercontent.com, githubassets.com, ghcr.io]
+  asns: [36459]
+Docker:
+  domains: [docker.com, docker.io]
+Valve:
+  domains: [steampowered.com, steamcommunity.com, steamstatic.com, steamcontent.com,
+            steamserver.net, valvesoftware.com]
+  asns: [32590]
+PlayStation:
+  domains: [playstation.com, playstation.net, sonyentertainmentnetwork.com]
+Nintendo:
+  domains: [nintendo.com, nintendo.net]
+Mozilla:
+  domains: [mozilla.org, mozilla.com, mozilla.net, firefox.com]
+Brave:
+  domains: [brave.com, bravesoftware.com]
+Opera:
+  domains: [opera.com, opera-api.com]
+  asns: [21837]
+Yahoo:
+  domains: [yahoo.com, yimg.com, yahooapis.com]
+Wikimedia:
+  domains: [wikimedia.org, wikipedia.org, wikidata.org]
+Canonical:
+  domains: [ubuntu.com, canonical.com, snapcraft.io, launchpad.net]
+Raspberry Pi:
+  domains: [raspberrypi.org, raspberrypi.com]
+Tailscale:
+  domains: [tailscale.com, tailscale.io, ts.net]
+Plex:
+  domains: [plex.tv, plex.direct]
+Oracle:
+  domains: [oracle.com, oraclecloud.com]
+  asns: [31898]
+
+# Smart home and device makers
+Tuya:
+  domains: [tuya.com, tuyaus.com, tuyaeu.com, tuyacn.com, tuyain.com, tuyasmart.com]
+Samsung:
+  domains: [samsung.com, samsungcloud.com, samsungapps.com, samsungosp.com, samsungqbe.com,
+            samsungelectronics.com, samsungcloudsolution.com, smartthings.com]
+LG:
+  domains: [lge.com, lgthinq.com, lgtvsdp.com, lgappstv.com]
+Roku:
+  domains: [roku.com]
+Vizio:
+  domains: [vizio.com]
+Sonos:
+  domains: [sonos.com]
+Philips Hue:
+  domains: [meethue.com, philips-hue.com]
+ecobee:
+  domains: [ecobee.com]
+TP-Link:
+  domains: [tp-link.com, tplinkcloud.com, tplinkra.com, tplinknbu.com, tplinkdns.com,
+            kasasmart.com]
+Xiaomi:
+  domains: [xiaomi.com, xiaomi.net, mi.com, miui.com]
+Wyze:
+  domains: [wyze.com, wyzecam.com]
+VeSync:
+  domains: [vesync.com]
+iRobot:
+  domains: [irobot.com, irobotapi.com]
+Ubiquiti:
+  domains: [ui.com, ubnt.com, ubiquiti.com]
+ASUS:
+  domains: [asus.com]
+  asns: [131144]
+HP:
+  domains: [hp.com, hpeprint.com, hpsmart.com]
+Garmin:
+  domains: [garmin.com]
+
+# Analytics, ads and app SDKs
+AppsFlyer:
+  domains: [appsflyer.com, appsflyersdk.com]
+AppLovin:
+  domains: [applovin.com, applvn.com]
+Braze:
+  domains: [braze.com, braze.eu]
+Sentry:
+  domains: [sentry.io]
+Bugsnag:
+  domains: [bugsnag.com]
+Adjust:
+  domains: [adjust.com]
+  asns: [205184]
+
+# Internet plumbing
+Let's Encrypt:
+  domains: [letsencrypt.org, lencr.org]
+DigiCert:
+  domains: [digicert.com]
+GlobalSign:
+  domains: [globalsign.com]
+NTP Pool:
+  domains: [ntp.org]
+
+# CDNs and hosting: name the host of domains no entry above claims
+Cloudflare:
+  domains: [cloudflare.com, cloudflare.net, cloudflare-dns.com, cloudflareinsights.com,
+            cloudflareclient.com, cloudflarestream.com, argotunnel.com, trycloudflare.com,
+            one.one.one.one, workers.dev, pages.dev]
+  asns: [13335, 209242]
+Akamai:
+  domains: [akamai.com, akamai.net, akamaiedge.net, akamaihd.net, akamaized.net,
+            akamaitechnologies.com, akadns.net, edgekey.net, edgesuite.net, go-mpulse.net,
+            linode.com]
+  asns: [20940, 16625, 33905, 12222, 35994, 63949]
+Fastly:
+  domains: [fastly.com, fastly.net, fastlylb.net, fastly-edge.com]
+  asns: [54113]
+CDN77:
+  asns: [60068, 212238]
+Edgio:
+  asns: [15133, 22822]
+CacheFly:
+  asns: [30081]
+G-Core:
+  asns: [199524]
+DigitalOcean:
+  domains: [digitalocean.com, digitaloceanspaces.com]
+  asns: [14061]
+Hetzner:
+  asns: [24940]
+OVH:
+  asns: [16276]
+Vultr:
+  asns: [20473]
+Leaseweb:
+  asns: [60781]
+Fly.io:
+  domains: [fly.dev, fly.io]
+  asns: [40509]
+Alibaba Cloud:
+  domains: [aliyuncs.com, alicdn.com]
+  asns: [45102, 37963]
+Tencent Cloud:
+  domains: [tencentcloudapi.com, myqcloud.com]
+  asns: [132203, 45090]

@@ -195,6 +195,7 @@ class DnsQuery(Base):
 
 class Domain(Base):
     __tablename__ = "domains"
+    __table_args__ = (Index("ix_domains_organization", "organization"),)
 
     domain: Mapped[str] = mapped_column(Text, primary_key=True)
     organization: Mapped[str | None] = mapped_column(Text)
@@ -235,6 +236,23 @@ class IpInfo(Base):
     asn_org: Mapped[str | None] = mapped_column(Text)
     # Looked up again once the databases are newer than this.
     looked_up_at: Mapped[datetime] = _ts()
+
+
+class OrgRule(Base):
+    """An organization rule added in the app; these take precedence over the bundled map
+    (see netmap/orgs.py). ``value`` is a domain suffix, or an AS number for kind 'asn'."""
+
+    __tablename__ = "org_rules"
+    __table_args__ = (
+        UniqueConstraint("kind", "value"),
+        CheckConstraint("kind IN ('suffix', 'asn')", name="ck_org_rules_kind"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    kind: Mapped[str] = mapped_column(Text)
+    value: Mapped[str] = mapped_column(Text)
+    organization: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _ts(server_default=func.now())
 
 
 class Port(Base):

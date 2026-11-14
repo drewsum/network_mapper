@@ -83,6 +83,16 @@ re-downloads them every `NETMAP_GEOIP_REFRESH_DAYS`. Without a key it uses
 The collector keeps the databases (about 140 MB) in the `geoip` volume. The status bar
 shows a warning if the download fails.
 
+## Organizations
+
+Each domain is grouped under an organization such as Google, AWS, Tuya or Apple, so you can
+see which companies a device talks to. The grouping comes from a curated map in
+`backend/src/netmap/data/organizations.yaml`. The domain's longest matching suffix decides
+first. If no suffix matches, the network (ASN) its IP is in decides, so a Tuya domain hosted
+on AWS still counts as Tuya. Domains that match neither are grouped as "Other". Rules you
+add on the Organizations page take precedence over the map, and saving one regroups every
+domain right away.
+
 ## Images and CI
 
 There's no CI. Images are built on the machine that runs them (`docker compose up -d --build`):

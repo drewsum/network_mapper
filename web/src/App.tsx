@@ -4,6 +4,7 @@ import { api, UNAUTHORIZED_EVENT } from "./api";
 import { DeviceDetailPage } from "./DeviceDetail";
 import { DeviceTable } from "./DeviceTable";
 import { Login } from "./Login";
+import { OrganizationsPage } from "./Organizations";
 
 const DEVICE_ROUTE = /^#\/devices\/([0-9a-f]{2}(?::[0-9a-f]{2}){5})$/i;
 
@@ -31,7 +32,8 @@ export function App() {
       client.setQueryData(["session"], s);
     },
   });
-  const device = DEVICE_ROUTE.exec(useHash());
+  const hash = useHash();
+  const device = DEVICE_ROUTE.exec(hash);
   const signedIn = !!session.data && (!session.data.auth_enabled || session.data.authenticated);
   const checks = useQuery({
     queryKey: ["status"],
@@ -53,6 +55,7 @@ export function App() {
   if (!s) page = session.error ? <p className="error">API unreachable.</p> : null;
   else if (needsLogin) page = <Login />;
   else if (device) page = <DeviceDetailPage key={device[1]} mac={device[1].toLowerCase()} />;
+  else if (hash === "#/organizations") page = <OrganizationsPage />;
   else page = <DeviceTable />;
 
   return (
@@ -62,6 +65,7 @@ export function App() {
           <a href="#/" className="brand">
             Network Mapper
           </a>
+          {signedIn && <a href="#/organizations">Organizations</a>}
           <span className={health.data?.status === "ok" ? "pill ok" : "pill bad"}>
             {health.isPending ? "checking…" : health.data ? `API ${health.data.version}` : "API down"}
           </span>

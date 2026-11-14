@@ -402,6 +402,12 @@ function countryName(code: string): string {
   }
 }
 
+/** The network a domain's IP is in, for a tooltip: "Network: Amazon.com, Inc. (AS16509)". */
+function network(asn: number | null, org: string | null): string | undefined {
+  if (asn === null) return undefined;
+  return org ? `Network: ${org} (AS${asn})` : `Network: AS${asn}`;
+}
+
 /** Where IP locations come from; DB-IP's free databases ask for a credit where shown. */
 function GeoipCredit() {
   const checks = useQuery({ queryKey: ["status"], queryFn: api.status });
@@ -488,7 +494,7 @@ function Domains({ mac }: { mac: string }) {
               <th>Lookups</th>
               <th>Blocked</th>
               <th>Country</th>
-              <th>Network</th>
+              <th>Organization</th>
               <th>First seen</th>
               <th>Last</th>
             </tr>
@@ -503,9 +509,7 @@ function Domains({ mac }: { mac: string }) {
                 <td>{d.queries.toLocaleString()}</td>
                 <td className={d.blocked ? "blocked" : "muted"}>{d.blocked ? d.blocked.toLocaleString() : "—"}</td>
                 <td title={d.country ? countryName(d.country) : undefined}>{d.country ?? "—"}</td>
-                <td className="small" title={d.asn ? `AS${d.asn}` : undefined}>
-                  {d.asn_org ?? "—"}
-                </td>
+                <td title={network(d.asn, d.asn_org)}>{d.organization ?? "—"}</td>
                 <td title={dateTime(d.first_seen)}>{ago(d.first_seen)}</td>
                 <td title={dateTime(d.last_seen)}>{ago(d.last_seen)}</td>
               </tr>
