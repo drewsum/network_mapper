@@ -86,6 +86,17 @@ def test_parse_dns_follows_compression():
     assert p.names_for_ip(msg, IPv4Address("192.0.2.5")) == []
 
 
+def test_cast_friendly_name_from_txt():
+    header = struct.pack("!HHHHHH", 0, 0x8400, 0, 1, 0, 0)
+    txt = b"".join(bytes([len(s)]) + s for s in (b"id=abc", b"fn=Kitchen speaker", b"md=Nest"))
+    name = p.encode_name("Google-Nest-Mini-abc." + p.GOOGLECAST_SERVICE)
+    reply = header + name + struct.pack("!HHIH", p.TYPE_TXT, 0x8001, 120, len(txt)) + txt
+    msg = p.parse_dns(reply)
+    assert msg.records[0].value == "id=abc\nfn=Kitchen speaker\nmd=Nest"
+    assert p.cast_friendly_name(msg) == "Kitchen speaker"
+    assert p.cast_friendly_name(p.parse_dns(mdns_reply())) is None
+
+
 def test_parse_dns_rejects_garbage():
     assert p.parse_dns(b"\x00\x01") is None
     loop = struct.pack("!HHHHHH", 0, 0x8400, 1, 0, 0, 0) + b"\xc0\x0c"  # name points at itself
@@ -183,6 +194,7 @@ def test_clean_name():
     assert clean_name("3f2504e0-4f89-11d3-9a0c-0305e82c3301.local") is None
     assert clean_name("a1b2c3d4e5f60718293a4b5c") is None
     assert clean_name("localhost") is None
+    assert clean_name("pi.hole") is None
     assert clean_name("") is None
     assert clean_name(None) is None
 

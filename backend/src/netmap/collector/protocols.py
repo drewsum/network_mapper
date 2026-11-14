@@ -21,9 +21,12 @@ SSDP_PORT = 1900
 MDNS_PORT = 5353
 MDNS_GROUP = "224.0.0.251"
 SSDP_GROUP = "239.255.255.250"
+# Cast devices announce this service; its TXT "fn" is the name the owner gave the device.
+GOOGLECAST_SERVICE = "_googlecast._tcp.local"
 
 TYPE_A = 1
 TYPE_PTR = 12
+TYPE_TXT = 16
 TYPE_NBSTAT = 33
 CLASS_IN = 1
 # mDNS: ask for a unicast reply (the "QU" bit in the question class).
@@ -118,14 +121,14 @@ def udp_port_filter(ports: list[int]) -> list[tuple[int, int, int, int]]:
 class Record:
     name: str
     type: int
-    value: str  # dotted IP for A records, a domain name for PTR
+    value: str  # dotted IP for A, a domain name for PTR, newline-joined strings for TXT
 
 
 @dataclass(frozen=True)
 class DnsMessage:
     id: int
     is_response: bool
-    records: list[Record]  # A and PTR records from every section
+    records: list[Record]  # A, PTR and TXT records from every section
 
 
 def encode_name(name: str) -> bytes:
@@ -188,10 +191,31 @@ def parse_dns(data: bytes) -> DnsMessage | None:
                 records.append(Record(name, rtype, str(IPv4Address(data[offset : offset + 4]))))
             elif rtype == TYPE_PTR:
                 records.append(Record(name, rtype, read_name(data, offset)[0]))
+            elif rtype == TYPE_TXT:
+                records.append(Record(name, rtype, _txt_strings(data[offset : offset + rdlen])))
             offset += rdlen
     except (struct.error, IndexError, ValueError):
         return None
     return DnsMessage(qid, bool(flags & 0x8000), records)
+
+
+def _txt_strings(rdata: bytes) -> str:
+    strings, i = [], 0
+    while i < len(rdata):
+        strings.append(rdata[i + 1 : i + 1 + rdata[i]].decode("utf-8", "replace"))
+        i += 1 + rdata[i]
+    return "\n".join(strings)
+
+
+def cast_friendly_name(msg: DnsMessage) -> str | None:
+    """The owner-given name in a cast device's service announcement (TXT key "fn")."""
+    for r in msg.records:
+        if r.type == TYPE_TXT and r.name.lower().endswith("." + GOOGLECAST_SERVICE):
+            for entry in r.value.split("\n"):
+                key, sep, value = entry.partition("=")
+                if sep and key.lower() == "fn" and value.strip():
+                    return value.strip()
+    return None
 
 
 def names_for_ip(msg: DnsMessage, ip: IPv4Address) -> list[str]:
@@ -313,7 +337,7 @@ M_SEARCH = (
     f"HOST: {SSDP_GROUP}:{SSDP_PORT}\r\n"
     'MAN: "ssdp:discover"\r\n'
     "MX: 2\r\n"
-    "ST: upnp:rootdevice\r\n"
+    "ST: ssdp:all\r\n"
     "\r\n"
 ).encode()
 

@@ -36,6 +36,7 @@ from netmap.collector.protocols import (
     DHCP_CLIENT_PORT,
     DHCP_SERVER_PORT,
     ETH_P_IP,
+    GOOGLECAST_SERVICE,
     M_SEARCH,
     MDNS_GROUP,
     MDNS_PORT,
@@ -47,6 +48,7 @@ from netmap.collector.protocols import (
     UpnpDevice,
     build_node_status,
     build_query,
+    cast_friendly_name,
     ip_from_reverse,
     names_for_ip,
     parse_description,
@@ -79,9 +81,11 @@ MAX_LOCATIONS_PER_DEVICE = 4
 # Hints about devices ARP hasn't recorded yet wait this long for it to.
 PENDING_TTL = timedelta(hours=1)
 
-# Names that identify nothing: UUIDs and long hex strings (common for cast devices).
+# Names that identify nothing: UUIDs and long hex strings (common for cast devices), and
+# the name Pi-hole gives its own address in reverse lookups.
 _JUNK_NAME = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16,}|localhost",
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16,}"
+    r"|localhost|pi\.hole",
     re.IGNORECASE,
 )
 
@@ -118,7 +122,8 @@ def hints_from_packet(
     if pkt.src_port == MDNS_PORT:
         msg = parse_dns(pkt.payload)
         if msg and msg.is_response:
-            name = next(filter(None, map(clean_name, names_for_ip(msg, pkt.src_ip))), None)
+            candidates = [cast_friendly_name(msg), *names_for_ip(msg, pkt.src_ip)]
+            name = next(filter(None, map(clean_name, candidates)), None)
         source = "mdns"
     elif pkt.src_port == NETBIOS_NS_PORT:
         name = clean_name(parse_node_status(pkt.payload))
@@ -292,6 +297,8 @@ class NameSource(Source):
 
         # Legacy unicast mDNS (sent from a port other than 5353): answers come straight back.
         udp.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+        cast = build_query(0, [(GOOGLECAST_SERVICE, TYPE_PTR)])
+        await loop.sock_sendto(udp, cast, (MDNS_GROUP, MDNS_PORT))
         for i in range(0, len(targets), MDNS_BATCH):
             batch = [(reverse_name(ip), TYPE_PTR) for ip in targets[i : i + MDNS_BATCH]]
             await loop.sock_sendto(udp, build_query(i + 1, batch), (MDNS_GROUP, MDNS_PORT))

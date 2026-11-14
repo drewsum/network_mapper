@@ -104,7 +104,7 @@ class DeviceName(Base):
     source: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str | None] = mapped_column(Text)
     # Protocol extras: DHCP fingerprint and vendor class, UPnP model and manufacturer.
-    details: Mapped[dict | None] = mapped_column(JSONB)
+    details: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     first_seen: Mapped[datetime] = _ts(server_default=func.now())
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
 
