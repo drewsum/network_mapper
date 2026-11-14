@@ -10,8 +10,9 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from netmap.collector.dnslog import Answer
 from netmap.collector.inventory import known_addresses
-from netmap.db.models import DnsQuery, Domain, HealthCheck
+from netmap.db.models import DnsQuery, Domain, DomainIP, HealthCheck
 
 VISIBILITY_CHECK = "pihole_client_visibility"
 VISIBILITY_WINDOW = timedelta(hours=1)
@@ -97,6 +98,36 @@ def record_queries(
         )
     session.commit()
     return inserted
+
+
+def record_answers(session: Session, answers: Sequence[Answer]) -> int:
+    """Grow the passive DNS map: when each domain was seen resolving to each IP. Commits.
+    Returns how many (domain, ip) pairs were touched."""
+    spans: dict[tuple[str, str], list[datetime]] = {}
+    for a in answers:
+        span = spans.setdefault((a.domain, a.ip), [a.time, a.time])
+        span[0], span[1] = min(span[0], a.time), max(span[1], a.time)
+    if not spans:
+        return 0
+    items = list(spans.items())
+    for start in range(0, len(items), BATCH):
+        stmt = insert(DomainIP).values(
+            [
+                {"domain": d, "ip": ip, "first_seen": lo, "last_seen": hi}
+                for (d, ip), (lo, hi) in items[start : start + BATCH]
+            ]
+        )
+        session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[DomainIP.domain, DomainIP.ip],
+                set_={
+                    "first_seen": func.least(DomainIP.first_seen, stmt.excluded.first_seen),
+                    "last_seen": func.greatest(DomainIP.last_seen, stmt.excluded.last_seen),
+                },
+            )
+        )
+    session.commit()
+    return len(spans)
 
 
 @dataclass(frozen=True)

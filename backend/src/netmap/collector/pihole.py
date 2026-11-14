@@ -1,4 +1,4 @@
-"""DNS queries from Pi-hole v6's REST API.
+"""DNS queries, and the answers they got, from Pi-hole v6's REST API.
 
 Logs in once with the app password (POST /api/auth) and reuses the session, logging in
 again when it expires and out when the collector stops: Pi-hole allows only a few API
@@ -6,6 +6,10 @@ sessions at a time. Each poll asks /api/queries for everything since the newest 
 query (minus a little overlap) and keeps the query IDs it hasn't stored yet; a unique
 (pihole_id, time) index makes repeats harmless anyway, so restarts neither duplicate
 nor drop queries as long as they're still in Pi-hole's memory (24 h by default).
+
+The query log has no answers, so the same poll also reads Pi-hole's DNS server log
+(/api/logs/dnsmasq, a buffer of the last 512 lines: a few minutes of traffic) for the
+domain -> IP map; see dnslog.py.
 """
 
 import asyncio
@@ -24,7 +28,14 @@ from sqlalchemy import func, select
 
 from netmap.collector.arp import default_gateway
 from netmap.collector.base import Source
-from netmap.collector.dns import VISIBILITY_CHECK, client_visibility, record_check, record_queries
+from netmap.collector.dns import (
+    VISIBILITY_CHECK,
+    client_visibility,
+    record_answers,
+    record_check,
+    record_queries,
+)
+from netmap.collector.dnslog import parse_answers
 from netmap.db import get_sessionmaker
 from netmap.db.models import DnsQuery
 
@@ -186,6 +197,12 @@ class PiholeClient:
             log.warning("pihole: stopped after %d pages; the rest comes next poll", MAX_PAGES)
         return sorted(found.values(), key=lambda q: q.id)
 
+    def log_since(self, next_id: int) -> tuple[list[dict], int, int | None]:
+        """DNS server log lines from ``next_id`` on: (lines, the next ID to ask for, the
+        FTL process ID, which changes, and restarts the numbering, when FTL restarts)."""
+        body = self.get("/api/logs/dnsmasq", {"nextID": next_id})
+        return body.get("log") or [], int(body.get("nextID", next_id)), body.get("pid")
+
 
 class PiholeSource(Source):
     name = "pihole"
@@ -199,6 +216,8 @@ class PiholeSource(Source):
         self._pihole_ip: str | None = None
         self._checked_at: datetime | None = None
         self._check_status: str | None = None
+        self._log_next = 0  # dnsmasq log cursor; 0 reads the whole buffer
+        self._log_pid: int | None = None
 
     def enabled(self) -> bool:
         return bool(self.settings.pihole_url and self.settings.pihole_password)
@@ -238,13 +257,32 @@ class PiholeSource(Source):
             # came back, look again by time alone. The unique index drops repeats.
             restarted = self._client.queries_since(self._last[1], now, 0)
             queries = [q for q in restarted if q.time > self._last[1]]
-        if not queries:
-            return 0
-        with get_sessionmaker()() as session:
-            inserted = record_queries(session, queries, resolver_ip=self._pihole_ip)
-        newest = queries[-1]
-        self._last = (newest.id, max(newest.time, self._last[1] if self._last else newest.time))
+        inserted = 0
+        if queries:
+            with get_sessionmaker()() as session:
+                inserted = record_queries(session, queries, resolver_ip=self._pihole_ip)
+            newest = queries[-1]
+            latest = max(newest.time, self._last[1]) if self._last else newest.time
+            self._last = (newest.id, latest)
+        try:
+            self._read_answers()
+        except PiholeError as exc:  # the map lags; queries keep flowing
+            log.warning("pihole: reading the DNS log for answers failed: %s", exc)
         return inserted
+
+    def _read_answers(self) -> None:
+        assert self._client is not None
+        lines, next_id, pid = self._client.log_since(self._log_next)
+        if pid != self._log_pid and self._log_pid is not None:
+            lines, next_id, pid = self._client.log_since(0)  # FTL restarted: IDs began again
+        elif self._log_next and next_id - self._log_next > len(lines):
+            log.debug("pihole: %d DNS log lines rolled out of the buffer unread",
+                      next_id - self._log_next - len(lines))  # fmt: skip
+        self._log_next, self._log_pid = next_id, pid
+        answers = parse_answers(lines)
+        if answers:
+            with get_sessionmaker()() as session:
+                record_answers(session, answers)
 
     async def run_once(self) -> None:
         try:

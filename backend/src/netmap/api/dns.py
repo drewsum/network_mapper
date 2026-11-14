@@ -1,14 +1,16 @@
 """DNS activity endpoints: what each device looked up, and when."""
 
 from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from netmap.api.deps import DB, Mac, get_device
 from netmap.config import get_settings
+from netmap.db.models import DomainIP
 
 router = APIRouter()
 
@@ -136,3 +138,57 @@ def device_domains(
     return DeviceDomainPage(
         start=start, end=end, total=total, queries=queries, blocked=blocked, items=items
     )
+
+
+class DomainAddress(BaseModel):
+    ip: str
+    first_seen: datetime
+    last_seen: datetime
+
+
+class AddressDomain(BaseModel):
+    domain: str
+    first_seen: datetime
+    last_seen: datetime
+
+
+def _window(stmt, start: datetime | None, end: datetime | None):
+    """Pairs seen at some point in [start, end]: their seen span overlaps the window."""
+    if start is not None:
+        stmt = stmt.where(DomainIP.last_seen >= start)
+    if end is not None:
+        stmt = stmt.where(DomainIP.first_seen <= end)
+    return stmt
+
+
+@router.get("/api/domains/{domain}/ips", response_model=list[DomainAddress])
+def domain_ips(
+    domain: Annotated[str, Path(max_length=253)],
+    db: DB,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> list[DomainAddress]:
+    """IPs the domain resolved to (from Pi-hole's answers), most recently seen first.
+    With start/end, only those seen at some point in that window."""
+    stmt = select(DomainIP).where(DomainIP.domain == domain.rstrip(".").lower())
+    rows = db.scalars(_window(stmt, start, end).order_by(DomainIP.last_seen.desc())).all()
+    return [
+        DomainAddress(ip=str(r.ip), first_seen=r.first_seen, last_seen=r.last_seen) for r in rows
+    ]
+
+
+@router.get("/api/ips/{ip}/domains", response_model=list[AddressDomain])
+def ip_domains(
+    ip: str, db: DB, start: datetime | None = None, end: datetime | None = None
+) -> list[AddressDomain]:
+    """Domains that resolved to the IP (shared hosting and CDNs give several), most
+    recently seen first. With start/end, only those seen at some point in that window."""
+    try:
+        address = str(ip_address(ip))
+    except ValueError as exc:
+        raise HTTPException(422, "not an IP address") from exc
+    stmt = select(DomainIP).where(DomainIP.ip == address)
+    rows = db.scalars(_window(stmt, start, end).order_by(DomainIP.last_seen.desc())).all()
+    return [
+        AddressDomain(domain=r.domain, first_seen=r.first_seen, last_seen=r.last_seen) for r in rows
+    ]
