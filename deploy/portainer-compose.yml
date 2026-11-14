@@ -1,7 +1,21 @@
 # Server stack, deployed by Portainer as a Git-repository stack (see docs/deploy-portainer.md).
-# All settings come from the stack's env vars, which Portainer writes to stack.env at the
-# repo root (hence ../stack.env).
+# All settings come from the stack's env vars in Portainer, passed in explicitly below.
+# (Portainer doesn't write a stack.env that compose can read for Git stacks.)
 # The image is built on the host from this repo; the API also serves the built UI.
+
+# Every NETMAP_* setting from .env.example. Blank values fall back to the app's defaults.
+x-netmap-env: &netmap-env
+  NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  NETMAP_LAN_CIDR: ${NETMAP_LAN_CIDR:-}
+  NETMAP_PIHOLE_URL: ${NETMAP_PIHOLE_URL:-}
+  NETMAP_PIHOLE_PASSWORD: ${NETMAP_PIHOLE_PASSWORD:-}
+  NETMAP_MAXMIND_LICENSE_KEY: ${NETMAP_MAXMIND_LICENSE_KEY:-}
+  NETMAP_ADMIN_PASSWORD: ${NETMAP_ADMIN_PASSWORD:-}
+  NETMAP_RAW_RETENTION_DAYS: ${NETMAP_RAW_RETENTION_DAYS:-}
+  NETMAP_AGG_1H_RETENTION_DAYS: ${NETMAP_AGG_1H_RETENTION_DAYS:-}
+  NETMAP_AGG_1D_RETENTION_DAYS: ${NETMAP_AGG_1D_RETENTION_DAYS:-}
+  NETMAP_COMPRESS_AFTER_DAYS: ${NETMAP_COMPRESS_AFTER_DAYS:-}
+  NETMAP_LOG_LEVEL: ${NETMAP_LOG_LEVEL:-}
 
 x-app: &app
   build:
@@ -10,15 +24,16 @@ x-app: &app
   image: netmap:local
   # Rebuild on every deploy so a git redeploy picks up new code.
   pull_policy: build
-  env_file: ../stack.env
-  environment:
-    NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  environment: *netmap-env
   restart: unless-stopped
 
 services:
   db:
     image: timescale/timescaledb:2.17.2-pg16
-    env_file: ../stack.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
     volumes:
       - ${NETMAP_DATA_DIR:?set NETMAP_DATA_DIR to the project dataset path}/db:/var/lib/postgresql/data
     # Loopback only: for the host-networked collector and for tools over SSH.
@@ -61,6 +76,7 @@ services:
     network_mode: host
     cap_add: [NET_RAW, NET_ADMIN]
     environment:
+      <<: *netmap-env
       NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${NETMAP_DB_PUBLISH_PORT:-5433}/${POSTGRES_DB}
     healthcheck:
       test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/netmap-collector-heartbeat') > 60)"]

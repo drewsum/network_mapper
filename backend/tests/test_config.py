@@ -23,6 +23,16 @@ def test_settings_read_from_prefixed_env(monkeypatch):
     assert settings.raw_retention_days == 14
 
 
+def test_empty_env_counts_as_unset(monkeypatch):
+    monkeypatch.setenv("NETMAP_LAN_CIDR", "")
+    monkeypatch.setenv("NETMAP_PIHOLE_PASSWORD", "")
+    monkeypatch.setenv("NETMAP_RAW_RETENTION_DAYS", "")
+    settings = Settings()  # type: ignore[call-arg]
+    assert settings.lan_cidr is None
+    assert settings.pihole_password is None
+    assert settings.raw_retention_days == 30
+
+
 def test_require_raises_for_missing_setting():
     with pytest.raises(MissingSettingError, match="NETMAP_LAN_CIDR"):
         get_settings().require("lan_cidr")

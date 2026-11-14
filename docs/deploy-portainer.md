@@ -42,6 +42,10 @@ In Portainer, as the non-admin user: **Stacks → Add stack → Repository**.
 - Environment variables: every variable from `.env.example`, filled in. Also set
   `NETMAP_DATA_DIR` to the dataset path. The dev-only `NETMAP_WEB_PUBLISH_PORT` isn't used.
 
+The compose file passes each setting to the containers explicitly as `${VAR:-}`, because
+Portainer doesn't write a `stack.env` file that compose can read for Git stacks. When you add a
+new `NETMAP_*` setting, add it to `x-netmap-env` in `deploy/portainer-compose.yml` too.
+
 Deploy, then check that `db` and `api` are healthy, `migrate` exited with code 0, and
 `collector` is healthy. The UI is at `http://<truenas-host>:<NETMAP_API_PUBLISH_PORT>`.
 
