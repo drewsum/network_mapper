@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB, MACADDR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -147,6 +148,14 @@ class DnsQuery(Base):
         ),
         Index("ix_dns_queries_mac_time", "mac", "time"),
         Index("ix_dns_queries_domain_time", "domain", "time"),
+        # Pi-hole query IDs are stored once, whatever the poller re-reads.
+        Index(
+            "uq_dns_queries_pihole",
+            "pihole_id",
+            "time",
+            unique=True,
+            postgresql_where=text("pihole_id IS NOT NULL"),
+        ),
     )
 
     time: Mapped[datetime] = _ts(primary_key=True)

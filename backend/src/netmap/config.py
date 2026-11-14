@@ -30,12 +30,17 @@ class Settings(BaseSettings):
     lan_cidr: IPv4Network | None = None
     # Interface on lan_cidr for ARP discovery; found automatically when unset.
     lan_iface: str | None = None
+    # Pi-hole v6 web address and an app password (Settings > Web interface / API).
     pihole_url: str | None = None
     # DNS server for reverse lookups of device IPs. Defaults to the Pi-hole host, then
     # to the system resolver.
     rdns_server: IPv4Address | None = None
     pihole_password: SecretStr | None = None
     maxmind_license_key: SecretStr | None = None
+    # Seconds between reads of Pi-hole's query log.
+    pihole_poll_seconds: float = Field(default=15.0, ge=5)
+    # Pi-hole's HTTPS certificate is self-signed by default; false skips checking it.
+    pihole_verify_tls: bool = True
     # Password for the web UI and API. Unset leaves both open to anyone on the LAN.
     admin_password: SecretStr | None = None
 

@@ -22,3 +22,6 @@ class Source(ABC):
 
     @abstractmethod
     async def run_once(self) -> None: ...
+
+    async def close(self) -> None:  # noqa: B027 - optional hook, a no-op by default
+        """Release outside resources (like an API session) when the collector stops."""
