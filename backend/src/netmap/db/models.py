@@ -19,7 +19,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 DEVICE_CATEGORIES = ("iot", "phone", "computer", "infrastructure", "media", "unknown")
 DNS_STATUSES = ("allowed", "blocked", "cached", "other")
-DEVICE_EVENT_KINDS = ("new_device", "online", "offline", "new_ip")
+DEVICE_EVENT_KINDS = (
+    "new_device", "online", "offline", "new_ip", "port_opened", "port_closed"
+)  # fmt: skip
 # Discovery protocols that can name a device (see collector/names.py).
 NAME_SOURCES = ("dhcp", "mdns", "ssdp", "netbios", "rdns")
 
@@ -52,6 +54,8 @@ class Device(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     online: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     merged_into: Mapped[str | None] = mapped_column(MACADDR, ForeignKey("devices.mac"))
+    # Last port scan (collector/ports.py); null until the first one.
+    ports_scanned_at: Mapped[datetime | None] = _ts()
     first_seen: Mapped[datetime] = _ts(server_default=func.now())
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
 
@@ -69,7 +73,7 @@ class DeviceIP(Base):
 
 
 class DeviceEvent(Base):
-    """Device history: first sighting, online/offline transitions, new IPs."""
+    """Device history: first sighting, online/offline transitions, new IPs, port changes."""
 
     __tablename__ = "device_events"
     __table_args__ = (
@@ -85,6 +89,8 @@ class DeviceEvent(Base):
     mac: Mapped[str] = mapped_column(MACADDR, ForeignKey("devices.mac", ondelete="CASCADE"))
     kind: Mapped[str] = mapped_column(Text)
     ip: Mapped[str | None] = mapped_column(INET)
+    port: Mapped[int | None] = mapped_column(Integer)
+    protocol: Mapped[str | None] = mapped_column(Text)
 
 
 class DeviceName(Base):
@@ -184,6 +190,8 @@ class Port(Base):
     protocol: Mapped[str] = mapped_column(Text, primary_key=True)
     service: Mapped[str | None] = mapped_column(Text)
     banner: Mapped[str | None] = mapped_column(Text)
+    # False once a scan no longer finds it; the row keeps its history.
+    open: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     first_seen: Mapped[datetime] = _ts(server_default=func.now())
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
 
