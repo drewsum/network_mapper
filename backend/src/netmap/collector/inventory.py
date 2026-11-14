@@ -4,7 +4,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import Text, case, cast, func, literal, literal_column, or_, select, tuple_, update
+from sqlalchemy import Text, case, cast, func, literal, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import ARRAY, MACADDR, distinct_on, insert
 from sqlalchemy.orm import Session
 
@@ -164,15 +164,17 @@ def record_names(
         if h.mac in known
     ]
     if rows:
-        empty = literal_column("'{}'::jsonb")
         stmt = insert(DeviceName).values(rows)
         session.execute(
             stmt.on_conflict_do_update(
                 index_elements=[DeviceName.mac, DeviceName.source],
                 set_={
                     "name": func.coalesce(stmt.excluded.name, DeviceName.name),
-                    "details": func.coalesce(DeviceName.details, empty).op("||")(
-                        func.coalesce(stmt.excluded.details, empty)
+                    # Merged when both are set (NULL || x is NULL), else whichever is.
+                    "details": func.coalesce(
+                        DeviceName.details.op("||")(stmt.excluded.details),
+                        stmt.excluded.details,
+                        DeviceName.details,
                     ),
                     "last_seen": func.greatest(DeviceName.last_seen, stmt.excluded.last_seen),
                 },

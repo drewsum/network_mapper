@@ -67,6 +67,9 @@ def test_later_hints_keep_known_names_and_merge_details(session):
     assert (row.first_seen, row.last_seen) == (T0, later)
 
     record_names(session, [NameHint(TV, "mdns", "tv", None, T0)], PRECEDENCE)
+    record_names(session, [NameHint(TV, "mdns", "tv", None, T0)], PRECEDENCE)
+    session.expire_all()
+    assert session.get(DeviceName, (TV, "mdns")).details is None
     record_names(session, [NameHint(TV, "mdns", "tv", {"model": "X"}, later)], PRECEDENCE)
     session.expire_all()
     assert session.get(DeviceName, (TV, "mdns")).details == {"model": "X"}  # SQL NULL, not 'null'
