@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     hostname_precedence: str = "ssdp,mdns,dhcp,netbios,rdns"
     # Seconds before an online device's ports are scanned again; 0 turns scanning off.
     port_scan_interval_seconds: float = Field(default=21600.0, ge=0)
+    # Seconds between reads of the router's UPnP port mappings.
+    upnp_poll_interval_seconds: float = Field(default=300.0, ge=30)
 
     @field_validator("hostname_precedence")
     @classmethod
