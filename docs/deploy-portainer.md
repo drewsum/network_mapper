@@ -61,6 +61,10 @@ Same as `.env.example`, plus:
 | `NETMAP_API_PUBLISH_PORT` | Host port for the API and UI (default 8000). Pick one no other app uses. |
 | `NETMAP_DB_PUBLISH_PORT` | Loopback-only DB port (default 5433). The collector connects through it. |
 
+Set `NETMAP_ADMIN_PASSWORD` (from `.env.example`) on the server: without it the UI and API
+are open to anyone on the LAN, and the UI shows a warning saying so. Changing it logs
+everyone out.
+
 ## Dev loop
 
 1. Develop on the dev PC and run `bash scripts/test.sh`, then commit and push a branch.

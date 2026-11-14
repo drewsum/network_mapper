@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     rdns_server: IPv4Address | None = None
     pihole_password: SecretStr | None = None
     maxmind_license_key: SecretStr | None = None
+    # Password for the web UI and API. Unset leaves both open to anyone on the LAN.
     admin_password: SecretStr | None = None
 
     # Retention, in days. Raw rows are dropped after raw_retention_days; the
@@ -48,6 +49,8 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     web_dist_dir: str | None = None
+    # How long a login lasts.
+    session_days: float = Field(default=30.0, gt=0)
     log_level: str = "INFO"
 
     collector_heartbeat_file: str = "/tmp/netmap-collector-heartbeat"
