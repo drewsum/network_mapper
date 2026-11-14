@@ -1,0 +1,71 @@
+# Server stack, deployed by Portainer as a Git-repository stack (see docs/deploy-portainer.md).
+# All settings come from the stack's env vars, which Portainer writes to stack.env.
+# The image is built on the host from this repo; the API also serves the built UI.
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  image: netmap:local
+  # Rebuild on every deploy so a git redeploy picks up new code.
+  pull_policy: build
+  env_file: stack.env
+  environment:
+    NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  restart: unless-stopped
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    env_file: stack.env
+    volumes:
+      - ${NETMAP_DATA_DIR:?set NETMAP_DATA_DIR to the project dataset path}/db:/var/lib/postgresql/data
+    # Loopback only: for the host-networked collector and for tools over SSH.
+    ports:
+      - "127.0.0.1:${NETMAP_DB_PUBLISH_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["netmap", "migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    command: ["netmap", "api"]
+    ports:
+      - "${NETMAP_API_PUBLISH_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  collector:
+    <<: *app
+    command: ["netmap", "collector"]
+    # Host networking so discovery sees the real LAN (ARP, mDNS, DHCP broadcasts).
+    # The db service isn't reachable by name from here, so use its loopback port.
+    network_mode: host
+    cap_add: [NET_RAW, NET_ADMIN]
+    environment:
+      NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${NETMAP_DB_PUBLISH_PORT:-5433}/${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/netmap-collector-heartbeat') > 60)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
