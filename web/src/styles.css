@@ -177,9 +177,10 @@ td.blocked { color: var(--bad); }
 .chart .allowed { fill: var(--chart-allowed); }
 .chart .blocked { fill: var(--chart-blocked); }
 .chart .hit { fill: transparent; }
-.chart .hit:hover, .chart .hit.on { fill: var(--line); fill-opacity: 0.5; }
+.chart .hit.on { fill: var(--line); fill-opacity: 0.6; }
+.chart .bars { pointer-events: none; }
 .legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin: 0 0 6px; flex-wrap: wrap; }
-.legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .swatch.allowed { background: var(--chart-allowed); }
 .swatch.blocked { background: var(--chart-blocked); }
 .tooltip {

@@ -83,41 +83,8 @@ function Chart({ data }: { data: DeviceActivity }) {
               </text>
             </g>
           ))}
-          {points.map((p, i) => {
-            const x = PAD.left + i * slot + (slot - barW) / 2;
-            const allowed = p.queries - p.blocked;
-            const hAllowed = (allowed / top) * plotH;
-            const hBlocked = (p.blocked / top) * plotH;
-            const base = PAD.top + plotH;
-            // The gap sits between the segments, taken from the upper one.
-            const gap = allowed > 0 && p.blocked > 0 ? Math.min(GAP, hBlocked / 2) : 0;
-            return (
-              <g key={p.time}>
-                {allowed > 0 && (
-                  <path
-                    className="allowed"
-                    d={
-                      p.blocked > 0
-                        ? `M${x},${base}V${base - hAllowed}H${x + barW}V${base}Z`
-                        : topRounded(x, base - hAllowed, barW, hAllowed, 4)
-                    }
-                  />
-                )}
-                {p.blocked > 0 && (
-                  <path
-                    className="blocked"
-                    d={topRounded(x, base - hAllowed - hBlocked, barW, hBlocked - gap, 4)}
-                  />
-                )}
-                {i % every === 0 && (
-                  <text className="axis" x={PAD.left + i * slot + slot / 2} y={HEIGHT - 6} textAnchor="middle">
-                    {tickLabel(p.time, data.bucket_seconds)}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-          {/* Hit targets: the whole column, wider than the bar, under the pointer. */}
+          {/* Hit targets: the whole column, wider than the bar; drawn first so the hover
+              highlight sits behind the bars. */}
           {points.map((p, i) => (
             <rect
               key={`hit-${p.time}`}
@@ -129,6 +96,42 @@ function Chart({ data }: { data: DeviceActivity }) {
               onMouseEnter={() => setHover(i)}
             />
           ))}
+          <g className="bars">
+            {points.map((p, i) => {
+              const x = PAD.left + i * slot + (slot - barW) / 2;
+              const allowed = p.queries - p.blocked;
+              const hAllowed = (allowed / top) * plotH;
+              const hBlocked = (p.blocked / top) * plotH;
+              const base = PAD.top + plotH;
+              // The gap sits between the segments, taken from the upper one.
+              const gap = allowed > 0 && p.blocked > 0 ? Math.min(GAP, hBlocked / 2) : 0;
+              return (
+                <g key={p.time}>
+                  {allowed > 0 && (
+                    <path
+                      className="allowed"
+                      d={
+                        p.blocked > 0
+                          ? `M${x},${base}V${base - hAllowed}H${x + barW}V${base}Z`
+                          : topRounded(x, base - hAllowed, barW, hAllowed, 4)
+                      }
+                    />
+                  )}
+                  {p.blocked > 0 && (
+                    <path
+                      className="blocked"
+                      d={topRounded(x, base - hAllowed - hBlocked, barW, hBlocked - gap, 4)}
+                    />
+                  )}
+                  {i % every === 0 && (
+                    <text className="axis" x={PAD.left + i * slot + slot / 2} y={HEIGHT - 6} textAnchor="middle">
+                      {tickLabel(p.time, data.bucket_seconds)}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </g>
         </svg>
       )}
       {shown && hover !== null && (
