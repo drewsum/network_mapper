@@ -55,12 +55,17 @@ th { color: var(--muted); font-weight: 500; }
   --card: #ffffff;
   --accent: #2f6fde;
   --accent-soft: #e8f0fd;
+  /* Chart marks, checked for colorblind separation and contrast on --card. */
+  --chart-allowed: #2f6fde;
+  --chart-blocked: #c0392b;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --card: #1f1f23;
     --accent: #6b9cf0;
     --accent-soft: #23304a;
+    --chart-allowed: #3987e5;
+    --chart-blocked: #e05a4c;
   }
 }
 a { color: var(--accent); text-decoration: none; }
@@ -162,3 +167,28 @@ td.domain { overflow-wrap: anywhere; }
 td.blocked { color: var(--bad); }
 .rule-form { margin: 0 0 10px; }
 .rule-form input { flex: 1 1 180px; min-width: 0; }
+
+/* Device activity chart and top-N lists */
+.range-bar { display: flex; align-items: center; gap: 10px; margin: 16px 0 8px; flex-wrap: wrap; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart .grid-line { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font-size: 11px; }
+.chart .allowed { fill: var(--chart-allowed); }
+.chart .blocked { fill: var(--chart-blocked); }
+.chart .hit { fill: transparent; }
+.chart .hit:hover, .chart .hit.on { fill: var(--line); fill-opacity: 0.5; }
+.legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin: 0 0 6px; flex-wrap: wrap; }
+.legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.swatch.allowed { background: var(--chart-allowed); }
+.swatch.blocked { background: var(--chart-blocked); }
+.tooltip {
+  position: absolute; top: 0; pointer-events: none; background: var(--card); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); white-space: nowrap; z-index: 1;
+}
+.shares { list-style: none; margin: 0; padding: 0; }
+.shares li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; margin: 0 0 8px; font-size: 14px; }
+.shares .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shares .value { color: var(--muted); font-size: 13px; }
+.shares .bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--chart-allowed); min-width: 2px; }

@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ActivityCard, SummaryCards } from "./Activity";
 import {
   api,
   type DeviceDetail as Detail,
@@ -22,6 +23,13 @@ const DETAIL_LABELS: Record<string, string> = {
 
 export function DeviceDetailPage({ mac }: { mac: string }) {
   const device = useQuery({ queryKey: ["device", mac], queryFn: () => api.device(mac) });
+  // One time range for the activity chart, the top lists and the DNS lookups.
+  const [hours, setHours] = useState(24);
+  const [start, setStart] = useState(() => rangeStart(24));
+  const pick = (h: number) => {
+    setHours(h);
+    setStart(rangeStart(h));
+  };
 
   if (device.error) {
     return (
@@ -48,12 +56,18 @@ export function DeviceDetailPage({ mac }: { mac: string }) {
         <Facts device={d} />
         <Notes device={d} />
       </div>
+      <div className="range-bar">
+        <RangePicker hours={hours} onPick={pick} />
+        <span className="muted small">Activity, top lists and DNS lookups</span>
+      </div>
+      <ActivityCard mac={d.mac} start={start} />
+      <SummaryCards mac={d.mac} start={start} countryName={countryName} />
+      <Domains mac={d.mac} start={start} />
       <Names device={d} />
       <Addresses device={d} />
       <Ports mac={d.mac} />
       <Forwards mac={d.mac} />
       <History mac={d.mac} />
-      <Domains mac={d.mac} />
       {!d.merged_into && <Merge device={d} />}
     </article>
   );
@@ -436,10 +450,26 @@ function rangeStart(hours: number): string {
   return new Date(Date.now() - hours * 3600_000).toISOString();
 }
 
-function Domains({ mac }: { mac: string }) {
-  const [hours, setHours] = useState(24);
+function RangePicker({ hours, onPick }: { hours: number; onPick: (hours: number) => void }) {
+  return (
+    <div className="segmented" role="group" aria-label="Time range">
+      {RANGES.map((r) => (
+        <button
+          key={r.hours}
+          type="button"
+          className={r.hours === hours ? "on" : ""}
+          aria-pressed={r.hours === hours}
+          onClick={() => onPick(r.hours)}
+        >
+          {r.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Domains({ mac, start }: { mac: string; start: string }) {
   const [sort, setSort] = useState<DomainSort>("queries");
-  const [start, setStart] = useState(() => rangeStart(24));
   const pages = useInfiniteQuery({
     queryKey: ["domains", mac, start, sort],
     queryFn: ({ pageParam }) => api.domains(mac, start, sort, pageParam),
@@ -452,27 +482,10 @@ function Domains({ mac }: { mac: string }) {
   });
   const first = pages.data?.pages[0];
   const items = pages.data?.pages.flatMap((p) => p.items) ?? [];
-  const pick = (h: number) => {
-    setHours(h);
-    setStart(rangeStart(h));
-  };
   return (
     <section className="card">
       <h2>DNS lookups</h2>
       <div className="row toolbar-row">
-        <div className="segmented" role="group" aria-label="Time range">
-          {RANGES.map((r) => (
-            <button
-              key={r.hours}
-              type="button"
-              className={r.hours === hours ? "on" : ""}
-              aria-pressed={r.hours === hours}
-              onClick={() => pick(r.hours)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
         <select value={sort} onChange={(e) => setSort(e.target.value as DomainSort)} aria-label="Sort domains">
           <option value="queries">Most looked up</option>
           <option value="last_seen">Most recent</option>
