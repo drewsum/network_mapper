@@ -83,6 +83,28 @@ export interface UpnpMapping {
   last_seen: string;
 }
 
+export interface DeviceDomain {
+  domain: string;
+  queries: number;
+  blocked: number;
+  first_seen: string;
+  last_seen: string;
+  new: boolean;
+  organization: string | null;
+  category: string | null;
+}
+
+export interface DeviceDomainPage {
+  start: string;
+  end: string;
+  total: number;
+  queries: number;
+  blocked: number;
+  items: DeviceDomain[];
+}
+
+export type DomainSort = "queries" | "last_seen" | "domain";
+
 export type DeviceUpdate = Partial<Pick<Device, "label" | "category" | "is_iot" | "notes">>;
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -116,6 +138,10 @@ export const api = {
   events: (mac: string, before?: string) =>
     get<DeviceEvent[]>(
       `/api/devices/${mac}/events?limit=50${before ? `&before=${encodeURIComponent(before)}` : ""}`,
+    ),
+  domains: (mac: string, start: string, sort: DomainSort, offset: number) =>
+    get<DeviceDomainPage>(
+      `/api/devices/${mac}/domains?${new URLSearchParams({ start, sort, offset: String(offset), limit: "50" })}`,
     ),
   ports: (mac: string) => get<Port[]>(`/api/devices/${mac}/ports`),
   upnpMappings: () => get<UpnpMapping[]>("/api/upnp-mappings"),

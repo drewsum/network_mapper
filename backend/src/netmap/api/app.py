@@ -1,10 +1,9 @@
 import time
-from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path as FsPath
 from typing import Annotated, Literal
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, Request, Response
+from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -12,10 +11,10 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from netmap import __version__
-from netmap.api import auth
+from netmap.api import auth, dns
+from netmap.api.deps import DB, MAC_PATTERN, Mac, get_device
 from netmap.collector.inventory import known_addresses, merge_devices
 from netmap.config import get_settings
-from netmap.db import get_sessionmaker
 from netmap.db.models import (
     DEVICE_CATEGORIES,
     Device,
@@ -26,15 +25,6 @@ from netmap.db.models import (
     UpnpMapping,
 )
 
-
-def get_db() -> Iterator[Session]:
-    with get_sessionmaker()() as session:
-        yield session
-
-
-DB = Annotated[Session, Depends(get_db)]
-MAC_PATTERN = r"^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$"
-Mac = Annotated[str, Path(pattern=MAC_PATTERN)]
 Category = Literal[DEVICE_CATEGORIES]  # type: ignore[valid-type]
 
 
@@ -168,13 +158,6 @@ class UpnpMappingOut(BaseModel):
     last_seen: datetime
 
 
-def _device(db: Session, mac: str) -> Device:
-    device = db.get(Device, mac.lower())
-    if device is None:
-        raise HTTPException(404, "unknown device")
-    return device
-
-
 def _detail(db: Session, device: Device) -> DeviceDetail:
     ips = db.scalars(
         select(DeviceIP).where(DeviceIP.mac == device.mac).order_by(DeviceIP.last_seen.desc())
@@ -277,12 +260,12 @@ def create_app() -> FastAPI:
         ]
 
     @app.get("/api/devices/{mac}", response_model=DeviceDetail)
-    def get_device(mac: Mac, db: DB) -> DeviceDetail:
-        return _detail(db, _device(db, mac))
+    def read_device(mac: Mac, db: DB) -> DeviceDetail:
+        return _detail(db, get_device(db, mac))
 
     @app.patch("/api/devices/{mac}", response_model=DeviceDetail)
     def update_device(mac: Mac, changes: DeviceUpdate, db: DB) -> DeviceDetail:
-        device = _device(db, mac)
+        device = get_device(db, mac)
         if device.merged_into:
             raise HTTPException(409, f"merged into {device.merged_into}; edit that device")
         values = changes.model_dump(exclude_unset=True)
@@ -298,17 +281,17 @@ def create_app() -> FastAPI:
         """Fold device ``mac`` into ``into``: history, IPs, names and ports move over, and
         later sightings of ``mac`` count for ``into``. For one device seen under two MACs,
         such as a phone that switched to a new private address."""
-        source = _device(db, mac)
-        target = _device(db, request.into)
+        source = get_device(db, mac)
+        target = get_device(db, request.into)
         if target.merged_into:
-            target = _device(db, target.merged_into)
+            target = get_device(db, target.merged_into)
         if source.merged_into:
             raise HTTPException(409, f"already merged into {source.merged_into}")
         if source.mac == target.mac:
             raise HTTPException(400, "can't merge a device into itself")
         merge_devices(db, source.mac, target.mac, settings.hostname_sources)
         db.expire_all()
-        return _detail(db, _device(db, target.mac))
+        return _detail(db, get_device(db, target.mac))
 
     @app.get("/api/devices/{mac}/events", response_model=list[DeviceEventOut])
     def device_events(
@@ -318,7 +301,7 @@ def create_app() -> FastAPI:
         before: datetime | None = None,
     ) -> list[DeviceEvent]:
         """Device history, newest first. Page with ``before`` (the last event's time)."""
-        device = _device(db, mac)
+        device = get_device(db, mac)
         stmt = select(DeviceEvent).where(DeviceEvent.mac == device.mac)
         if before is not None:
             stmt = stmt.where(DeviceEvent.time < before)
@@ -329,7 +312,7 @@ def create_app() -> FastAPI:
     @app.get("/api/devices/{mac}/ports", response_model=list[PortOut])
     def device_ports(mac: Mac, db: DB) -> list[Port]:
         """Ports found by the scanner, open ones first; closed ones keep their history."""
-        device = _device(db, mac)
+        device = get_device(db, mac)
         return list(
             db.scalars(
                 select(Port)
@@ -362,6 +345,7 @@ def create_app() -> FastAPI:
             for m, device in rows
         ]
 
+    app.include_router(dns.router)
     _mount_spa(app, settings.web_dist_dir)
     return app
 
