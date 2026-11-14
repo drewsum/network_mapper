@@ -1,10 +1,11 @@
-"""Device inventory updates from discovery sightings (MAC seen at IP, at a time)."""
+"""Device inventory updates: discovery sightings (MAC seen at IP, at a time), names, port
+scans, UPnP mappings, and merging devices."""
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import Text, case, cast, func, literal, or_, select, tuple_, update
+from sqlalchemy import Text, case, cast, func, literal, or_, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import ARRAY, MACADDR, distinct_on, insert
 from sqlalchemy.orm import Session
 
@@ -41,6 +42,28 @@ class NameHint:
     seen_at: datetime
 
 
+def canonical_macs(session: Session, macs: Iterable[str]) -> dict[str, str]:
+    """Merged-away MACs among ``macs``, mapped to the device they were merged into."""
+    return dict(
+        session.execute(
+            select(Device.mac, Device.merged_into).where(
+                Device.mac.in_(set(macs)), Device.merged_into.is_not(None)
+            )
+        ).all()
+    )
+
+
+def _redirect_sightings(session: Session, sightings: Mapping[str, Sighting]) -> dict:
+    """Sightings with merged-away MACs credited to their device (latest sighting wins)."""
+    aliases = canonical_macs(session, sightings) if sightings else {}
+    out: dict[str, Sighting] = {}
+    for mac, s in sightings.items():
+        mac = aliases.get(mac, mac)
+        if mac not in out or s.seen_at > out[mac].seen_at:
+            out[mac] = s
+    return out
+
+
 def known_addresses(session: Session) -> dict[str, str]:
     """Each device's most recently seen IP, as {mac: ip}."""
     rows = session.execute(
@@ -61,6 +84,7 @@ def record_sightings(
 
     ``sightings`` maps MAC to its latest sighting. Commits.
     """
+    sightings = _redirect_sightings(session, sightings)
     events: list[dict] = []
     if sightings:
         macs = list(sightings)
@@ -159,6 +183,15 @@ def record_names(
     inventory yet are skipped; returns the MACs that were recorded.
     """
     hints = list(hints)
+    aliases = canonical_macs(session, (h.mac for h in hints))
+    if aliases:
+        latest: dict[tuple[str, str], NameHint] = {}
+        for h in hints:
+            mac = aliases.get(h.mac, h.mac)
+            h = NameHint(mac, h.source, h.name, h.details, h.seen_at)
+            if (mac, h.source) not in latest or h.seen_at > latest[(mac, h.source)].seen_at:
+                latest[(mac, h.source)] = h
+        hints = list(latest.values())
     known = set(session.scalars(select(Device.mac).where(Device.mac.in_({h.mac for h in hints}))))
     rows = [
         {
@@ -339,4 +372,85 @@ def record_upnp(session: Session, mappings: Iterable, now: datetime) -> None:
             tuple_(UpnpMapping.external_port, UpnpMapping.protocol).not_in(list(rows))
         )
     session.execute(gone)
+    session.commit()
+
+
+# Moves one device's rows onto another; where both have a row for the same key the two
+# are combined. Order matters only in that devices goes last.
+_MERGE_SQL = [
+    """
+    INSERT INTO device_ips (mac, ip, first_seen, last_seen)
+    SELECT :target, ip, first_seen, last_seen FROM device_ips WHERE mac = :source
+    ON CONFLICT (mac, ip) DO UPDATE SET
+        first_seen = LEAST(device_ips.first_seen, EXCLUDED.first_seen),
+        last_seen = GREATEST(device_ips.last_seen, EXCLUDED.last_seen)
+    """,
+    "DELETE FROM device_ips WHERE mac = :source",
+    """
+    INSERT INTO device_names (mac, source, name, details, first_seen, last_seen)
+    SELECT :target, source, name, details, first_seen, last_seen
+    FROM device_names WHERE mac = :source
+    ON CONFLICT (mac, source) DO UPDATE SET
+        name = CASE WHEN EXCLUDED.last_seen > device_names.last_seen
+            THEN COALESCE(EXCLUDED.name, device_names.name)
+            ELSE COALESCE(device_names.name, EXCLUDED.name) END,
+        details = COALESCE(device_names.details || EXCLUDED.details,
+                           EXCLUDED.details, device_names.details),
+        first_seen = LEAST(device_names.first_seen, EXCLUDED.first_seen),
+        last_seen = GREATEST(device_names.last_seen, EXCLUDED.last_seen)
+    """,
+    "DELETE FROM device_names WHERE mac = :source",
+    """
+    INSERT INTO ports (mac, port, protocol, service, banner, open, first_seen, last_seen)
+    SELECT :target, port, protocol, service, banner, open, first_seen, last_seen
+    FROM ports WHERE mac = :source
+    ON CONFLICT (mac, port, protocol) DO UPDATE SET
+        open = ports.open OR EXCLUDED.open,
+        service = COALESCE(ports.service, EXCLUDED.service),
+        banner = COALESCE(ports.banner, EXCLUDED.banner),
+        first_seen = LEAST(ports.first_seen, EXCLUDED.first_seen),
+        last_seen = GREATEST(ports.last_seen, EXCLUDED.last_seen)
+    """,
+    "DELETE FROM ports WHERE mac = :source",
+    """
+    INSERT INTO device_baselines (mac, key_type, key, hits, expected, first_seen, last_seen)
+    SELECT :target, key_type, key, hits, expected, first_seen, last_seen
+    FROM device_baselines WHERE mac = :source
+    ON CONFLICT (mac, key_type, key) DO UPDATE SET
+        hits = device_baselines.hits + EXCLUDED.hits,
+        expected = COALESCE(device_baselines.expected, EXCLUDED.expected),
+        first_seen = LEAST(device_baselines.first_seen, EXCLUDED.first_seen),
+        last_seen = GREATEST(device_baselines.last_seen, EXCLUDED.last_seen)
+    """,
+    "DELETE FROM device_baselines WHERE mac = :source",
+    "UPDATE device_events SET mac = :target WHERE mac = :source",
+    "UPDATE dns_queries SET mac = :target WHERE mac = :source",
+    "UPDATE upnp_mappings SET mac = :target WHERE mac = :source",
+    "UPDATE alerts SET mac = :target WHERE mac = :source",
+    # Earlier aliases of the source now point straight at the target: one hop, always.
+    "UPDATE devices SET merged_into = :target WHERE merged_into = :source",
+    """
+    UPDATE devices t SET
+        label = COALESCE(t.label, s.label),
+        notes = COALESCE(t.notes, s.notes),
+        category = CASE WHEN t.category = 'unknown' THEN s.category ELSE t.category END,
+        is_iot = t.is_iot OR s.is_iot,
+        online = t.online OR s.online,
+        first_seen = LEAST(t.first_seen, s.first_seen),
+        last_seen = GREATEST(t.last_seen, s.last_seen)
+    FROM devices s WHERE t.mac = :target AND s.mac = :source
+    """,
+    "UPDATE devices SET merged_into = :target, online = false WHERE mac = :source",
+]
+
+
+def merge_devices(session: Session, source: str, target: str, precedence: Sequence[str]) -> None:
+    """Fold device ``source`` into ``target``: its history, IPs, names and ports move over
+    and later sightings of its MAC count for ``target`` (e.g. a phone that switched to a
+    new private MAC). The source row stays as an alias. Commits.
+    """
+    params = {"source": source, "target": target}
+    for sql in _MERGE_SQL:
+        session.execute(text(sql), params)
+    apply_hostnames(session, precedence, [target])
     session.commit()
