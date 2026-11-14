@@ -5,8 +5,9 @@ Lists are downloaded when they're older than NETMAP_BLOCKLIST_REFRESH_HOURS (a d
 default) and kept in the database, so a restart doesn't download them again. A list
 that fails to download keeps its last copy and is tried again in an hour. A domain is a
 hit when it, or any IP it has resolved to, is on a list; domains Pi-hole blocks count as
-hits on "pihole". How downloads are going shows on the status bar as the "blocklists"
-check.
+hits on "pihole". Lists of malware URLs leave out popular sites, using the Tranco list
+downloaded with them (see netmap/blocklists.py). How downloads are going shows on the
+status bar as the "blocklists" check.
 """
 
 import asyncio
@@ -116,6 +117,7 @@ class CategorySource(Source):
         super().__init__(settings)
         self._attempted: dict[str, datetime] = {}
         self._errors: dict[str, str] = {}  # list name -> last failed download
+        self._popular: frozenset[str] | None = None  # for one round's downloads only
 
     async def run_once(self) -> None:
         await asyncio.to_thread(self._run)
@@ -152,7 +154,8 @@ class CategorySource(Source):
                 continue
             self._attempted[bl.name] = now
             try:
-                entries = blocklists.download(bl, key)
+                popular = self._popular_sites() if bl.url_hosts else None
+                entries = blocklists.download(bl, key, popular)
             except (OSError, ValueError) as exc:  # URLError and timeouts are OSErrors
                 self._errors[bl.name] = str(exc)
                 log.warning("blocklists: %s download failed: %s", bl.label, exc)
@@ -160,6 +163,16 @@ class CategorySource(Source):
             store_list(session, bl.name, entries, now)
             self._errors.pop(bl.name, None)
             log.info("blocklists: %s has %d entries", bl.label, len(entries))
+        self._popular = None  # 100k names: not worth keeping between rounds
+
+    def _popular_sites(self) -> frozenset[str]:
+        """The Tranco list, downloaded at most once a round. Raises like download()."""
+        if self._popular is None:
+            try:
+                self._popular = blocklists.download_popular()
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"Tranco list of popular sites: {exc}") from exc
+        return self._popular
 
     def _status(self, session: Session) -> CheckResult:
         stored = dict(session.execute(select(Blocklist.name, Blocklist.entries)).all())

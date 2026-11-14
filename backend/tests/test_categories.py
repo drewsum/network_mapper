@@ -16,6 +16,7 @@ from netmap.collector import pihole
 from netmap.collector.categories import assign_categories, store_list
 from netmap.collector.dns import record_queries
 from netmap.collector.orgs import assign_organizations
+from netmap.config import get_settings
 from netmap.db import get_engine, get_sessionmaker
 from netmap.db.models import Domain, DomainIP
 
@@ -78,9 +79,11 @@ def test_parse_urlhaus():
         f'"2","2026-11-14 10:00:00","http://[{LISTED_IP}]/a","online","","malware_download",'
         '"","",""\n'
         '"3","2026-11-14 10:00:00","http://127.0.0.1/a","online","","","","",""\n'
+        '"4","2026-11-14 10:00:00","https://raw.githubusercontent.com/u/r/x.exe","online",'
+        '"","","","",""\n'
     )
-    e = blocklists.parse_urlhaus(csv)
-    assert e.domains == {"evil.example.net"}
+    e = blocklists.parse_urlhaus(csv, frozenset({"githubusercontent.com"}))
+    assert e.domains == {"evil.example.net"}  # not the file-sharing site
     assert {str(n) for n in e.networks} == {f"{LISTED_IP}/128"}
 
 
@@ -91,18 +94,29 @@ def test_parse_threatfox_zip():
         '"2026-11-01","2","https://drop.bad.example/p","url","payload_delivery"\n'
         f'"2026-11-01","3","[{LISTED_IP}]:443","ip:port","botnet_cc"\n'
         '"2026-11-01","4","d41d8cd98f00b204e9800998ecf8427e","md5_hash","payload"\n'
+        '"2026-11-01","5","https://github.com/u/r/raw/x.zip","url","payload_delivery"\n'
+        '"2026-11-01","6","pub-1.r2.dev","domain","botnet_cc"\n'
     )
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("full.csv", csv)
-    e = blocklists.parse_threatfox(blocklists._unzip(buf.getvalue()).decode())
-    assert e.domains == {"c2.bad.example", "drop.bad.example"}
+    popular = frozenset({"github.com", "r2.dev"})
+    e = blocklists.parse_threatfox(blocklists._unzip(buf.getvalue()).decode(), popular)
+    # A URL on a popular site is dropped; a domain listed as such is kept.
+    assert e.domains == {"c2.bad.example", "drop.bad.example", "pub-1.r2.dev"}
     assert {str(n) for n in e.networks} == {f"{LISTED_IP}/128"}
 
 
-def test_keyed_lists_need_the_key():
+def test_keyed_lists_need_the_key_and_popular_sites():
     with pytest.raises(ValueError, match="NETMAP_ABUSECH_AUTH_KEY"):
         blocklists.download(blocklists.BY_NAME["urlhaus"])
+    with pytest.raises(ValueError, match="popular"):
+        blocklists.download(blocklists.BY_NAME["urlhaus"], key="k")
+
+
+def test_parse_popular():
+    text = "1,google.com\n2,GitHub.com\n3,third.example\n"
+    assert blocklists.parse_popular(text, top=2) == {"google.com", "github.com"}
 
 
 # --- against a real DB ---
@@ -197,7 +211,7 @@ def test_ingest_tracks_whether_the_latest_query_was_blocked(session):
 def test_source_downloads_when_due_and_drops_keyless_lists(session, monkeypatch, db_env):
     calls = []
 
-    def fake_download(bl, key=None):
+    def fake_download(bl, key=None, popular=None):
         calls.append(bl.name)
         if bl.name == "feodo":
             raise OSError("HTTP Error 503: Service Unavailable")
@@ -220,3 +234,32 @@ def test_source_downloads_when_due_and_drops_keyless_lists(session, monkeypatch,
     assert calls == []  # firehol is fresh, feodo waits an hour before retrying
     source._refresh(session, now + timedelta(hours=1, minutes=1))
     assert calls == ["feodo"]
+
+
+@pytest.mark.db
+def test_tranco_is_fetched_once_a_round_and_failures_are_reported(session, monkeypatch, db_env):
+    monkeypatch.setenv("NETMAP_ABUSECH_AUTH_KEY", "k")
+    get_settings.cache_clear()
+    fetched = []
+
+    def fake_popular():
+        fetched.append(1)
+        if len(fetched) > 1:
+            raise OSError("timed out")
+        return frozenset({"github.com"})
+
+    def fake_download(bl, key=None, popular=None):
+        assert (popular is not None) == bl.url_hosts
+        return blocklists.parse_netset(LISTED_NET)
+
+    monkeypatch.setattr(job.blocklists, "download_popular", fake_popular)
+    monkeypatch.setattr(job.blocklists, "download", fake_download)
+    source = job.CategorySource(get_settings())
+    now = datetime.now(UTC)
+    source._refresh(session, now)
+    assert len(fetched) == 1  # shared by URLhaus and ThreatFox
+    assert source._popular is None  # not kept after the round
+
+    source._refresh(session, now + timedelta(days=2))
+    status = source._status(session)
+    assert status.status == "warning" and "Tranco" in status.message
