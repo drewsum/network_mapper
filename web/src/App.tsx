@@ -34,7 +34,7 @@ export function App() {
                   {d.category}
                   {d.is_iot && d.category !== "iot" ? " · IoT" : ""}
                 </td>
-                <td>{d.vendor ?? "—"}</td>
+                <td>{d.is_randomized_mac ? "randomized MAC" : (d.vendor ?? "—")}</td>
                 <td className="mono">{d.mac}</td>
                 <td>{d.online ? "online" : `offline since ${new Date(d.last_seen).toLocaleDateString()}`}</td>
               </tr>

@@ -9,6 +9,7 @@ export interface Device {
   label: string | null;
   hostname: string | null;
   vendor: string | null;
+  is_randomized_mac: boolean;
   category: string;
   is_iot: boolean;
   online: boolean;
