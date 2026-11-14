@@ -49,6 +49,8 @@ services:
   collector:
     <<: *app
     command: ["netmap", "collector"]
+    volumes:
+      - geoip:/app/geoip
     # Docker Desktop can't see the real LAN, so dev keeps the bridge network and ARP
     # discovery disables itself (no interface on NETMAP_LAN_CIDR). The server stack runs the
     # collector with host networking and CAP_NET_RAW: deploy/portainer-compose.yml.
@@ -95,4 +97,5 @@ services:
 
 volumes:
   db-data:
+  geoip:
   web-node-modules:

@@ -1,7 +1,7 @@
 """Domain -> IP answers from Pi-hole's DNS server log (GET /api/logs/dnsmasq).
 
 The query log has no answers, but dnsmasq logs each one: "reply example.com is
-93.184.216.34" (or "cached ..." / "cached-stale ..." when served from cache). A name that
+203.0.113.34" (or "cached ..." / "cached-stale ..." when served from cache). A name that
 is an alias logs "reply www.example.com is <CNAME>" followed by the target's answers,
 which then belong to both names. Blocked answers (0.0.0.0, ::) aren't addresses anyone
 connects to, and are skipped.

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from netmap.collector.arp import ArpSource
 from netmap.collector.base import Source
+from netmap.collector.geoip import GeoipSource
 from netmap.collector.names import NameSource
 from netmap.collector.pihole import PiholeSource
 from netmap.collector.ports import PortScanSource
@@ -24,6 +25,7 @@ SOURCE_TYPES: list[type[Source]] = [
     PortScanSource,
     UpnpSource,
     PiholeSource,
+    GeoipSource,
 ]
 
 
