@@ -7,13 +7,13 @@ from fastapi import Depends, FastAPI, HTTPException, Path
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from netmap import __version__
 from netmap.config import get_settings
 from netmap.db import get_sessionmaker
-from netmap.db.models import Device, Port
+from netmap.db.models import Device, Port, UpnpMapping
 
 
 def get_db() -> Iterator[Session]:
@@ -59,6 +59,19 @@ class PortOut(BaseModel):
     last_seen: datetime
 
 
+class UpnpMappingOut(BaseModel):
+    external_port: int
+    protocol: str
+    internal_ip: str
+    internal_port: int
+    description: str | None
+    mac: str | None
+    device: str | None  # the device's label or hostname
+    active: bool
+    first_seen: datetime
+    last_seen: datetime
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="netmap", version=__version__)
 
@@ -87,6 +100,30 @@ def create_app() -> FastAPI:
                 .order_by(Port.open.desc(), Port.protocol, Port.port)
             )
         )
+
+    @app.get("/api/upnp-mappings", response_model=list[UpnpMappingOut])
+    def upnp_mappings(db: DB) -> list[UpnpMappingOut]:
+        """Port forwards devices opened on the router over UPnP, active ones first."""
+        rows = db.execute(
+            select(UpnpMapping, func.coalesce(Device.label, Device.hostname))
+            .outerjoin(Device, Device.mac == UpnpMapping.mac)
+            .order_by(UpnpMapping.active.desc(), UpnpMapping.external_port)
+        ).all()
+        return [
+            UpnpMappingOut(
+                external_port=m.external_port,
+                protocol=m.protocol,
+                internal_ip=str(m.internal_ip),
+                internal_port=m.internal_port,
+                description=m.description,
+                mac=m.mac,
+                device=device,
+                active=m.active,
+                first_seen=m.first_seen,
+                last_seen=m.last_seen,
+            )
+            for m, device in rows
+        ]
 
     _mount_spa(app, get_settings().web_dist_dir)
     return app

@@ -9,13 +9,14 @@ from netmap.collector.arp import ArpSource
 from netmap.collector.base import Source
 from netmap.collector.names import NameSource
 from netmap.collector.ports import PortScanSource
+from netmap.collector.upnp import UpnpSource
 from netmap.collector.vendors import OuiSource
 from netmap.config import Settings
 
 log = logging.getLogger(__name__)
 
 # Sources register here as milestones land (M1 discovery, M2 Pi-hole, ...).
-SOURCE_TYPES: list[type[Source]] = [ArpSource, OuiSource, NameSource, PortScanSource]
+SOURCE_TYPES: list[type[Source]] = [ArpSource, OuiSource, NameSource, PortScanSource, UpnpSource]
 
 
 async def _loop(source: Source, stop: asyncio.Event) -> None:

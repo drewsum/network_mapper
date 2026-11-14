@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB, MACADDR
@@ -197,7 +198,10 @@ class Port(Base):
 
 
 class UpnpMapping(Base):
+    """A port forward a LAN device asked the router for over UPnP (collector/upnp.py)."""
+
     __tablename__ = "upnp_mappings"
+    __table_args__ = (UniqueConstraint("external_port", "protocol", name="uq_upnp_mappings_port"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     external_port: Mapped[int] = mapped_column(Integer)
@@ -206,6 +210,7 @@ class UpnpMapping(Base):
     internal_port: Mapped[int] = mapped_column(Integer)
     description: Mapped[str | None] = mapped_column(Text)
     mac: Mapped[str | None] = mapped_column(MACADDR, ForeignKey("devices.mac", ondelete="SET NULL"))
+    # False once the router no longer lists it, or lists it as disabled.
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     first_seen: Mapped[datetime] = _ts(server_default=func.now())
     last_seen: Mapped[datetime] = _ts(server_default=func.now())

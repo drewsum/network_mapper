@@ -17,13 +17,11 @@ the best source in hostname_precedence.
 
 import asyncio
 import ctypes
-import http.client
 import logging
 import re
 import socket
 import struct
 import sys
-import urllib.request
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address, IPv4Network
@@ -60,6 +58,7 @@ from netmap.collector.protocols import (
     reverse_name,
     udp_port_filter,
 )
+from netmap.collector.upnp import lan_request
 from netmap.db import get_sessionmaker
 
 log = logging.getLogger(__name__)
@@ -74,8 +73,6 @@ REPLY_WAIT = 3.0
 SEND_GAP = 0.005
 # Reverse lookups per mDNS query packet; every responder answers only its own.
 MDNS_BATCH = 20
-DESCRIPTION_MAX_BYTES = 256 * 1024
-DESCRIPTION_TIMEOUT = 3.0
 DESCRIPTION_TTL = timedelta(hours=6)
 MAX_LOCATIONS_PER_DEVICE = 4
 # Hints about devices ARP hasn't recorded yet wait this long for it to.
@@ -135,25 +132,15 @@ def hints_from_packet(
     return [NameHint(pkt.src_mac, source, name, None, now)], None
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
-
-
 def fetch_description(url: str, ip: str) -> UpnpDevice | None:
     """A device's UPnP description, fetched only from the device itself (plain HTTP)."""
     parts = urlsplit(url)
     if parts.scheme != "http" or parts.hostname != ip:
         return None
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
     try:
-        with opener.open(url, timeout=DESCRIPTION_TIMEOUT) as resp:
-            body = resp.read(DESCRIPTION_MAX_BYTES + 1)
-    except (OSError, ValueError, http.client.HTTPException):
+        return parse_description(lan_request(url))
+    except OSError:
         return None
-    if len(body) > DESCRIPTION_MAX_BYTES:
-        return None
-    return parse_description(body)
 
 
 def _attach_filter(sock: socket.socket, program: list[tuple[int, int, int, int]]) -> None:

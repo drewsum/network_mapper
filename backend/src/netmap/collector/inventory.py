@@ -16,6 +16,7 @@ from netmap.db.models import (
     DeviceName,
     OuiVendor,
     Port,
+    UpnpMapping,
 )
 
 # The locally-administered bit: set on randomized (private) MACs, never on vendor-assigned ones.
@@ -290,4 +291,52 @@ def record_scan(
             )
         )
     device.ports_scanned_at = now
+    session.commit()
+
+
+def record_upnp(session: Session, mappings: Iterable, now: datetime) -> None:
+    """Store the router's current port mappings (``upnp.Mapping``s). Commits.
+
+    Each is attributed to the device last seen at its internal IP. Mappings the router no
+    longer lists are kept, marked inactive.
+    """
+    ip_to_mac = {ip: mac for mac, ip in known_addresses(session).items()}
+    rows = {
+        (m.external_port, m.protocol): {
+            "external_port": m.external_port,
+            "protocol": m.protocol,
+            "internal_ip": m.internal_ip,
+            "internal_port": m.internal_port,
+            "description": m.description,
+            "mac": ip_to_mac.get(m.internal_ip),
+            "active": m.enabled,
+            "first_seen": now,
+            "last_seen": now,
+        }
+        for m in mappings
+    }
+    if rows:
+        stmt = insert(UpnpMapping).values(list(rows.values()))
+        session.execute(
+            stmt.on_conflict_do_update(
+                constraint="uq_upnp_mappings_port",
+                set_={
+                    col: stmt.excluded[col]
+                    for col in (
+                        "internal_ip",
+                        "internal_port",
+                        "description",
+                        "mac",
+                        "active",
+                        "last_seen",
+                    )
+                },
+            )
+        )
+    gone = update(UpnpMapping).where(UpnpMapping.active).values(active=False)
+    if rows:
+        gone = gone.where(
+            tuple_(UpnpMapping.external_port, UpnpMapping.protocol).not_in(list(rows))
+        )
+    session.execute(gone)
     session.commit()
