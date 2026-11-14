@@ -20,9 +20,11 @@ backend/            Python package `netmap` (uv project)
   migrations/       Alembic migrations (hypertables, continuous aggregates)
   tests/
 web/                React + TypeScript + Vite UI
-scripts/            check_hardcoded_ips.py, test.sh
+scripts/            check_hardcoded_ips.py, test.sh, build-on-host.sh
 Dockerfile          one image; compose picks the role (api / collector / migrate / seed)
 docker-compose.yml  dev stack
+deploy/             portainer-compose.yml: the TrueNAS server stack
+docs/               deploy-portainer.md
 ```
 
 ## Configuration
@@ -74,5 +76,10 @@ aggregates are kept for 90 and 365 days. These policies are re-applied from env 
 ## Images and CI
 
 There's no CI. Images are built on the machine that runs them (`docker compose up -d --build`):
-this PC for development, and the TrueNAS host for deployment, from a git checkout. Nothing is
-published to a registry, and the repo stays private.
+this PC for development, and the TrueNAS host for deployment. Nothing is published to a
+registry, and the repo stays private.
+
+## Deploying on TrueNAS
+
+The server runs `deploy/portainer-compose.yml` as a Portainer Git-repository stack. See
+[docs/deploy-portainer.md](docs/deploy-portainer.md).

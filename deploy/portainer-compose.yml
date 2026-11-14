@@ -1,0 +1,86 @@
+# Server stack, deployed by Portainer as a Git-repository stack (see docs/deploy-portainer.md).
+# All settings come from the stack's env vars in Portainer, passed in explicitly below.
+# (Portainer doesn't write a stack.env that compose can read for Git stacks.)
+# The image is built on the host over SSH (scripts/build-on-host.sh), because the Portainer
+# TrueNAS app can't run builds. The API also serves the built UI.
+
+# Every NETMAP_* setting from .env.example. Blank values fall back to the app's defaults.
+x-netmap-env: &netmap-env
+  NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  NETMAP_LAN_CIDR: ${NETMAP_LAN_CIDR:-}
+  NETMAP_PIHOLE_URL: ${NETMAP_PIHOLE_URL:-}
+  NETMAP_PIHOLE_PASSWORD: ${NETMAP_PIHOLE_PASSWORD:-}
+  NETMAP_MAXMIND_LICENSE_KEY: ${NETMAP_MAXMIND_LICENSE_KEY:-}
+  NETMAP_ADMIN_PASSWORD: ${NETMAP_ADMIN_PASSWORD:-}
+  NETMAP_RAW_RETENTION_DAYS: ${NETMAP_RAW_RETENTION_DAYS:-}
+  NETMAP_AGG_1H_RETENTION_DAYS: ${NETMAP_AGG_1H_RETENTION_DAYS:-}
+  NETMAP_AGG_1D_RETENTION_DAYS: ${NETMAP_AGG_1D_RETENTION_DAYS:-}
+  NETMAP_COMPRESS_AFTER_DAYS: ${NETMAP_COMPRESS_AFTER_DAYS:-}
+  NETMAP_LOG_LEVEL: ${NETMAP_LOG_LEVEL:-}
+
+x-app: &app
+  image: netmap:local
+  pull_policy: never
+  environment: *netmap-env
+  restart: unless-stopped
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+    volumes:
+      - ${NETMAP_DATA_DIR:?set NETMAP_DATA_DIR to the project dataset path}/db:/var/lib/postgresql/data
+    # Loopback only: for the host-networked collector and for tools over SSH.
+    ports:
+      - "127.0.0.1:${NETMAP_DB_PUBLISH_PORT:-5433}:5432"
+    healthcheck:
+      # Over TCP: during first-run init, Postgres listens only on its socket.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["netmap", "migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    command: ["netmap", "api"]
+    ports:
+      - "${NETMAP_API_PUBLISH_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  collector:
+    <<: *app
+    command: ["netmap", "collector"]
+    # Host networking so discovery sees the real LAN (ARP, mDNS, DHCP broadcasts).
+    # The db service isn't reachable by name from here, so use its loopback port.
+    network_mode: host
+    cap_add: [NET_RAW, NET_ADMIN]
+    environment:
+      <<: *netmap-env
+      NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${NETMAP_DB_PUBLISH_PORT:-5433}/${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/netmap-collector-heartbeat') > 60)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully

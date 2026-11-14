@@ -18,7 +18,11 @@ class MissingSettingError(RuntimeError):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="NETMAP_", env_file=".env", extra="ignore")
+    # Empty vars count as unset: the server compose file passes every setting as
+    # ${VAR:-}, so a blank optional value must fall back to its default.
+    model_config = SettingsConfigDict(
+        env_prefix="NETMAP_", env_file=".env", extra="ignore", env_ignore_empty=True
+    )
 
     database_url: str = Field(description="SQLAlchemy URL, e.g. postgresql+psycopg://...")
 
