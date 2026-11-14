@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     # Which discovery source names a device when several do, best first. Sources left out
     # are still recorded but never used for the displayed hostname.
     hostname_precedence: str = "ssdp,mdns,dhcp,netbios,rdns"
+    # Seconds before an online device's ports are scanned again; 0 turns scanning off.
+    port_scan_interval_seconds: float = Field(default=21600.0, ge=0)
 
     @field_validator("hostname_precedence")
     @classmethod

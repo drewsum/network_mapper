@@ -1,9 +1,9 @@
 from collections.abc import Iterator
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path as FsPath
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Path
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from netmap import __version__
 from netmap.config import get_settings
 from netmap.db import get_sessionmaker
-from netmap.db.models import Device
+from netmap.db.models import Device, Port
 
 
 def get_db() -> Iterator[Session]:
@@ -22,6 +22,7 @@ def get_db() -> Iterator[Session]:
 
 
 DB = Annotated[Session, Depends(get_db)]
+Mac = Annotated[str, Path(pattern=r"^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$")]
 
 
 class Health(BaseModel):
@@ -46,6 +47,18 @@ class DeviceOut(BaseModel):
     last_seen: datetime
 
 
+class PortOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    port: int
+    protocol: str
+    service: str | None
+    banner: str | None
+    open: bool
+    first_seen: datetime
+    last_seen: datetime
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="netmap", version=__version__)
 
@@ -61,15 +74,29 @@ def create_app() -> FastAPI:
     def list_devices(db: DB) -> list[Device]:
         return list(db.scalars(select(Device).order_by(Device.category, Device.hostname)))
 
+    @app.get("/api/devices/{mac}/ports", response_model=list[PortOut])
+    def device_ports(mac: Mac, db: DB) -> list[Port]:
+        """Ports found by the scanner, open ones first; closed ones keep their history."""
+        mac = mac.lower()
+        if db.get(Device, mac) is None:
+            raise HTTPException(404, "unknown device")
+        return list(
+            db.scalars(
+                select(Port)
+                .where(Port.mac == mac)
+                .order_by(Port.open.desc(), Port.protocol, Port.port)
+            )
+        )
+
     _mount_spa(app, get_settings().web_dist_dir)
     return app
 
 
 def _mount_spa(app: FastAPI, dist_dir: str | None) -> None:
     """Serve the built React app (production image). In dev, Vite serves it instead."""
-    if not dist_dir or not (Path(dist_dir) / "index.html").is_file():
+    if not dist_dir or not (FsPath(dist_dir) / "index.html").is_file():
         return
-    dist = Path(dist_dir)
+    dist = FsPath(dist_dir)
     app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
 
     @app.get("/{path:path}", include_in_schema=False)

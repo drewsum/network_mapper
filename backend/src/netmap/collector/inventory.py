@@ -8,7 +8,15 @@ from sqlalchemy import Text, case, cast, func, literal, or_, select, tuple_, upd
 from sqlalchemy.dialects.postgresql import ARRAY, MACADDR, distinct_on, insert
 from sqlalchemy.orm import Session
 
-from netmap.db.models import NAME_SOURCES, Device, DeviceEvent, DeviceIP, DeviceName, OuiVendor
+from netmap.db.models import (
+    NAME_SOURCES,
+    Device,
+    DeviceEvent,
+    DeviceIP,
+    DeviceName,
+    OuiVendor,
+    Port,
+)
 
 # The locally-administered bit: set on randomized (private) MACs, never on vendor-assigned ones.
 _LOCAL_BIT = literal("02:00:00:00:00:00", MACADDR)
@@ -211,3 +219,75 @@ def apply_hostnames(
     if macs is not None:
         stmt = stmt.where(Device.mac.in_(macs))
     session.execute(stmt)
+
+
+def record_scan(
+    session: Session,
+    mac: str,
+    found: Mapping[tuple[int, str], tuple[str, str | None]],
+    now: datetime,
+) -> None:
+    """Store one device's port scan, ``{(port, protocol): (service, banner)}``. Commits.
+
+    Ports that opened or closed since the last scan become device events; the first scan
+    only sets the baseline. A scan that finds nothing where ports were open is treated as
+    inconclusive (the device most likely dropped off mid-scan) and closes nothing.
+    """
+    device = session.get(Device, mac)
+    if device is None:
+        return
+    was_open = {
+        (port, proto): is_open
+        for port, proto, is_open in session.execute(
+            select(Port.port, Port.protocol, Port.open).where(Port.mac == mac)
+        )
+    }
+    events = []
+    if found:
+        stmt = insert(Port).values(
+            [
+                {
+                    "mac": mac,
+                    "port": port,
+                    "protocol": proto,
+                    "service": service,
+                    "banner": banner,
+                    "open": True,
+                    "first_seen": now,
+                    "last_seen": now,
+                }
+                for (port, proto), (service, banner) in found.items()
+            ]
+        )
+        session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[Port.mac, Port.port, Port.protocol],
+                set_={
+                    "open": True,
+                    "service": stmt.excluded.service,
+                    "banner": func.coalesce(stmt.excluded.banner, Port.banner),
+                    "last_seen": stmt.excluded.last_seen,
+                },
+            )
+        )
+        if device.ports_scanned_at is not None:
+            events += [("port_opened", key) for key in found if not was_open.get(key)]
+        closed = [key for key, is_open in was_open.items() if is_open and key not in found]
+        if closed:
+            session.execute(
+                update(Port)
+                .where(Port.mac == mac, tuple_(Port.port, Port.protocol).in_(closed))
+                .values(open=False)
+            )
+            events += [("port_closed", key) for key in closed]
+    if events:
+        session.execute(
+            insert(DeviceEvent).values(
+                [
+                    {"time": now, "mac": mac, "kind": kind, "port": port, "protocol": proto}
+                    for kind, (port, proto) in events
+                ]
+            )
+        )
+    device.ports_scanned_at = now
+    session.commit()
