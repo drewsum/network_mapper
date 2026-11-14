@@ -26,7 +26,7 @@ Google:
   domains: [google.com, google.ca, google.co.uk, google.de, googleapis.com, gstatic.com,
             gvt1.com, gvt2.com, gvt3.com, googlevideo.com, googleusercontent.com,
             youtube.com, youtu.be, ytimg.com, youtube-nocookie.com, ggpht.com,
-            doubleclick.net, googlesyndication.com, googleadservices.com,
+            doubleclick.net, 2mdn.net, googlesyndication.com, googleadservices.com,
             google-analytics.com, googletagmanager.com, googletagservices.com,
             app-measurement.com, crashlytics.com, firebaseio.com, firebase.com,
             android.com, googlezip.net, gmail.com, googlemail.com, chromium.org,
@@ -85,7 +85,7 @@ Adobe:
   domains: [adobe.com, adobe.io, adobelogin.com, adobedtm.com, demdex.net, omtrdc.net,
             typekit.net]
 Autodesk:
-  domains: [autodesk.com]
+  domains: [autodesk.com, autodesk360.com]
 Anthropic:
   domains: [anthropic.com, claude.ai, claude.com, claudeusercontent.com]
   asns: [399358]
