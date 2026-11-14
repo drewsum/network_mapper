@@ -1,6 +1,12 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, type DeviceDetail as Detail, type DeviceEvent, deviceName } from "./api";
+import {
+  api,
+  type DeviceDetail as Detail,
+  type DeviceEvent,
+  deviceName,
+  type DomainSort,
+} from "./api";
 import { ago, CategorySelect, dateTime, EditableText, Status, useUpdateDevice } from "./ui";
 
 const DETAIL_LABELS: Record<string, string> = {
@@ -46,13 +52,7 @@ export function DeviceDetailPage({ mac }: { mac: string }) {
       <Ports mac={d.mac} />
       <Forwards mac={d.mac} />
       <History mac={d.mac} />
-      <section className="card muted">
-        <h2>DNS activity</h2>
-        <p>
-          Domains contacted, top organizations and countries, and the activity chart arrive with
-          the Pi-hole integration (M2) and enrichment (M3).
-        </p>
-      </section>
+      <Domains mac={d.mac} />
       {!d.merged_into && <Merge device={d} />}
     </article>
   );
@@ -388,6 +388,108 @@ function Merge({ device: d }: { device: Detail }) {
         )}
       </div>
       {merge.error && <p className="error">{merge.error.message}</p>}
+    </section>
+  );
+}
+
+const RANGES = [
+  { label: "1 hour", hours: 1 },
+  { label: "24 hours", hours: 24 },
+  { label: "7 days", hours: 24 * 7 },
+  { label: "30 days", hours: 24 * 30 },
+];
+
+/** Start of a range ending now, fixed when the range is picked so pages line up. */
+function rangeStart(hours: number): string {
+  return new Date(Date.now() - hours * 3600_000).toISOString();
+}
+
+function Domains({ mac }: { mac: string }) {
+  const [hours, setHours] = useState(24);
+  const [sort, setSort] = useState<DomainSort>("queries");
+  const [start, setStart] = useState(() => rangeStart(24));
+  const pages = useInfiniteQuery({
+    queryKey: ["domains", mac, start, sort],
+    queryFn: ({ pageParam }) => api.domains(mac, start, sort, pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (last, all) => {
+      const loaded = all.reduce((n, p) => n + p.items.length, 0);
+      return loaded < last.total ? loaded : undefined;
+    },
+    refetchInterval: false,
+  });
+  const first = pages.data?.pages[0];
+  const items = pages.data?.pages.flatMap((p) => p.items) ?? [];
+  const pick = (h: number) => {
+    setHours(h);
+    setStart(rangeStart(h));
+  };
+  return (
+    <section className="card">
+      <h2>DNS lookups</h2>
+      <div className="row toolbar-row">
+        <div className="segmented" role="group" aria-label="Time range">
+          {RANGES.map((r) => (
+            <button
+              key={r.hours}
+              type="button"
+              className={r.hours === hours ? "on" : ""}
+              aria-pressed={r.hours === hours}
+              onClick={() => pick(r.hours)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <select value={sort} onChange={(e) => setSort(e.target.value as DomainSort)} aria-label="Sort domains">
+          <option value="queries">Most looked up</option>
+          <option value="last_seen">Most recent</option>
+          <option value="domain">Name</option>
+        </select>
+      </div>
+      {pages.error && <p className="error">{pages.error.message}</p>}
+      {first && (
+        <p className="muted small">
+          {first.total} domains, {first.queries.toLocaleString()} lookups
+          {first.blocked ? `, ${first.blocked.toLocaleString()} blocked` : ""}
+        </p>
+      )}
+      {first && first.total === 0 && <p className="muted">No DNS lookups in this range.</p>}
+      {items.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>Domain</th>
+              <th>Lookups</th>
+              <th>Blocked</th>
+              <th>First seen</th>
+              <th>Last</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((d) => (
+              <tr key={d.domain}>
+                <td className="domain">
+                  {d.domain}
+                  {d.new && <span className="tag">new</span>}
+                </td>
+                <td>{d.queries.toLocaleString()}</td>
+                <td className={d.blocked ? "blocked" : "muted"}>{d.blocked ? d.blocked.toLocaleString() : "—"}</td>
+                <td title={dateTime(d.first_seen)}>{ago(d.first_seen)}</td>
+                <td title={dateTime(d.last_seen)}>{ago(d.last_seen)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {pages.hasNextPage && (
+        <button type="button" disabled={pages.isFetchingNextPage} onClick={() => void pages.fetchNextPage()}>
+          Show more
+        </button>
+      )}
+      <p className="muted small">
+        Organizations, countries and an activity chart come with enrichment (M3).
+      </p>
     </section>
   );
 }

@@ -150,3 +150,11 @@ tr.chosen td { font-weight: 550; }
 }
 .login { max-width: 340px; margin: 48px auto; display: flex; flex-direction: column; gap: 12px; }
 .login label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.toolbar-row { margin: 0 0 10px; align-items: center; }
+.toolbar-row select { flex: 0 1 auto; }
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.segmented button { border: none; border-radius: 0; padding: 4px 10px; font-size: 13px; }
+.segmented button + button { border-left: 1px solid var(--line); }
+.segmented button.on { background: var(--accent-soft); color: var(--accent); font-weight: 550; }
+td.domain { overflow-wrap: anywhere; }
+td.blocked { color: var(--bad); }
