@@ -32,6 +32,13 @@ export function App() {
     },
   });
   const device = DEVICE_ROUTE.exec(useHash());
+  const signedIn = !!session.data && (!session.data.auth_enabled || session.data.authenticated);
+  const checks = useQuery({
+    queryKey: ["status"],
+    queryFn: api.status,
+    enabled: signedIn,
+    refetchInterval: 5 * 60_000,
+  });
 
   // Any 401 (an expired session, or a password change) means: show the login page.
   useEffect(() => {
@@ -71,6 +78,14 @@ export function App() {
           NETMAP_ADMIN_PASSWORD to require a login.
         </p>
       )}
+      {signedIn &&
+        checks.data
+          ?.filter((c) => c.status === "warning")
+          .map((c) => (
+            <p key={c.name} className="warning" title={`checked ${new Date(c.checked_at).toLocaleString()}`}>
+              {c.message}
+            </p>
+          ))}
       {page}
     </main>
   );

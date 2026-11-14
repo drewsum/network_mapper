@@ -9,6 +9,14 @@ export interface Session {
   authenticated: boolean;
 }
 
+export interface HealthCheck {
+  name: string;
+  status: "ok" | "warning" | "unknown";
+  message: string;
+  details: Record<string, unknown> | null;
+  checked_at: string;
+}
+
 /** Fired when the API answers 401, so the app can show the login page. */
 export const UNAUTHORIZED_EVENT = "netmap:unauthorized";
 
@@ -131,6 +139,7 @@ const get = <T>(path: string) => request<T>("GET", path);
 export const api = {
   health: () => get<Health>("/api/health"),
   session: () => get<Session>("/api/auth/session"),
+  status: () => get<HealthCheck[]>("/api/status"),
   login: (password: string) => request<Session>("POST", "/api/auth/login", { password }),
   logout: () => request<Session>("POST", "/api/auth/logout"),
   devices: () => get<Device[]>("/api/devices"),

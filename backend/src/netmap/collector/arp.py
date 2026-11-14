@@ -70,6 +70,25 @@ def parse_sender(frame: bytes, network: IPv4Network) -> tuple[str, str] | None:
     return format_mac(sha), str(ip)
 
 
+def parse_proc_route(text: str, iface: str | None = None) -> IPv4Address | None:
+    """Default gateway from the kernel routing table (/proc/net/route), on ``iface`` if given."""
+    for line in text.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) < 4 or fields[1] != "00000000" or not int(fields[3], 16) & 0x2:
+            continue  # not a default route, or no gateway flag
+        if iface is None or fields[0] == iface:
+            return IPv4Address(int(fields[2], 16).to_bytes(4, "little"))
+    return None
+
+
+def default_gateway(iface: str | None = None) -> IPv4Address | None:
+    try:
+        with open("/proc/net/route") as f:
+            return parse_proc_route(f.read(), iface)
+    except OSError:
+        return None
+
+
 def parse_proc_arp(text: str, iface: str, network: IPv4Network) -> dict[str, str]:
     """Complete entries of the kernel ARP cache (/proc/net/arp) on ``iface``, as {mac: ip}."""
     found = {}

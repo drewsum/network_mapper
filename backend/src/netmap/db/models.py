@@ -117,6 +117,27 @@ class DeviceName(Base):
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
 
 
+HEALTH_STATUSES = ("ok", "warning", "unknown")
+
+
+class HealthCheck(Base):
+    """The latest result of a self-check the collector runs, shown in the UI if not ok."""
+
+    __tablename__ = "health_checks"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN (" + ", ".join(f"'{s}'" for s in HEALTH_STATUSES) + ")",
+            name="ck_health_checks_status",
+        ),
+    )
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    status: Mapped[str] = mapped_column(Text)
+    message: Mapped[str] = mapped_column(Text)
+    details: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+    checked_at: Mapped[datetime] = _ts()
+
+
 class AppSecret(Base):
     """Random secrets the app generates for itself, such as the session signing key."""
 

@@ -22,8 +22,9 @@ from urllib.parse import urlencode, urlsplit
 
 from sqlalchemy import func, select
 
+from netmap.collector.arp import default_gateway
 from netmap.collector.base import Source
-from netmap.collector.dns import record_queries
+from netmap.collector.dns import VISIBILITY_CHECK, client_visibility, record_check, record_queries
 from netmap.db import get_sessionmaker
 from netmap.db.models import DnsQuery
 
@@ -36,6 +37,8 @@ OVERLAP = timedelta(seconds=60)
 BACKFILL = timedelta(hours=24)
 MAX_PAGES = 200
 HTTP_TIMEOUT = 15.0
+# How often to check that Pi-hole sees devices by their own IPs (see dns.client_visibility).
+VISIBILITY_EVERY = timedelta(minutes=10)
 
 # Pi-hole v6 query status -> dns_queries.status
 BLOCKED = {
@@ -194,6 +197,8 @@ class PiholeSource(Source):
         self._last: tuple[int, datetime] | None = None  # newest stored (id, time)
         # The Pi-hole host's own LAN address: its queries arrive from 127.0.0.1.
         self._pihole_ip: str | None = None
+        self._checked_at: datetime | None = None
+        self._check_status: str | None = None
 
     def enabled(self) -> bool:
         return bool(self.settings.pihole_url and self.settings.pihole_password)
@@ -252,6 +257,20 @@ class PiholeSource(Source):
             return
         if inserted:
             log.info("pihole: stored %d queries", inserted)
+        now = datetime.now(UTC)
+        if self._checked_at is None or now - self._checked_at >= VISIBILITY_EVERY:
+            self._checked_at = now
+            await asyncio.to_thread(self._check_visibility, now)
+
+    def _check_visibility(self, now: datetime) -> None:
+        gateway = default_gateway(self.settings.lan_iface)
+        with get_sessionmaker()() as session:
+            result = client_visibility(session, str(gateway) if gateway else None, now)
+            record_check(session, VISIBILITY_CHECK, result, now)
+        if result.status != self._check_status:  # log changes, not every check
+            level = logging.WARNING if result.status == "warning" else logging.INFO
+            log.log(level, "pihole: %s", result.message)
+            self._check_status = result.status
 
     async def close(self) -> None:
         if self._client is not None:

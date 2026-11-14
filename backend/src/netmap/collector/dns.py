@@ -1,15 +1,24 @@
 """Storing DNS queries (from Pi-hole) and keeping the domains table current."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from ipaddress import ip_address
 from typing import Protocol
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from netmap.collector.inventory import known_addresses
-from netmap.db.models import DnsQuery, Domain
+from netmap.db.models import DnsQuery, Domain, HealthCheck
+
+VISIBILITY_CHECK = "pihole_client_visibility"
+VISIBILITY_WINDOW = timedelta(hours=1)
+# Fewer queries than this in the window says nothing either way.
+VISIBILITY_MIN_QUERIES = 50
+# Warn when at least this share of queries reaches Pi-hole from the router.
+ROUTER_SHARE_WARNING = 0.5
 
 # Rows per INSERT: well under Postgres's 65535 bind parameters at 7 columns a row.
 BATCH = 5000
@@ -88,3 +97,76 @@ def record_queries(
         )
     session.commit()
     return inserted
+
+
+@dataclass(frozen=True)
+class CheckResult:
+    status: str  # ok | warning | unknown
+    message: str
+    details: dict
+
+
+def client_visibility(session: Session, router_ip: str | None, now: datetime) -> CheckResult:
+    """Does Pi-hole see each device's own IP? If the router forwards DNS for the network,
+    every query arrives from the router and none can be traced to a device."""
+    rows = session.execute(
+        select(DnsQuery.client_ip, func.count())
+        .where(DnsQuery.time >= now - VISIBILITY_WINDOW, DnsQuery.pihole_id.is_not(None))
+        .group_by(DnsQuery.client_ip)
+    ).all()
+    counts = {str(ip): n for ip, n in rows}
+    total = sum(counts.values())
+    via_router = counts.get(router_ip, 0) if router_ip else 0
+    clients = sorted(ip for ip in counts if ip != router_ip and not ip_address(ip).is_loopback)
+    details = {
+        "window_minutes": int(VISIBILITY_WINDOW.total_seconds() // 60),
+        "queries": total,
+        "router_ip": router_ip,
+        "router_queries": via_router,
+        "clients": len(clients),
+    }
+    if total < VISIBILITY_MIN_QUERIES:
+        return CheckResult(
+            "unknown", f"Only {total} DNS queries in the last hour; too few to check.", details
+        )
+    share = via_router / total
+    if share >= ROUTER_SHARE_WARNING:
+        return CheckResult(
+            "warning",
+            f"{share:.0%} of DNS queries reach Pi-hole from the router ({router_ip}), so they "
+            "can't be traced to devices. Point the router's DHCP DNS setting at Pi-hole: see "
+            "docs/pihole.md.",
+            details,
+        )
+    if len(clients) < 2:
+        return CheckResult(
+            "warning",
+            f"Pi-hole saw only {len(clients)} client in the last hour; devices may be using "
+            "another DNS server. See docs/pihole.md.",
+            details,
+        )
+    return CheckResult(
+        "ok",
+        f"Pi-hole sees {len(clients)} clients by their own IPs ({share:.0%} via the router).",
+        details,
+    )
+
+
+def record_check(session: Session, name: str, result: CheckResult, now: datetime) -> None:
+    """Store a check's latest result. Commits."""
+    stmt = insert(HealthCheck).values(
+        name=name, status=result.status, message=result.message, details=result.details,
+        checked_at=now,
+    )  # fmt: skip
+    session.execute(
+        stmt.on_conflict_do_update(
+            index_elements=[HealthCheck.name],
+            set_={
+                "status": stmt.excluded.status,
+                "message": stmt.excluded.message,
+                "details": stmt.excluded.details,
+                "checked_at": stmt.excluded.checked_at,
+            },
+        )
+    )
+    session.commit()
