@@ -22,6 +22,7 @@ x-netmap-env: &netmap-env
   NETMAP_PIHOLE_POLL_SECONDS: ${NETMAP_PIHOLE_POLL_SECONDS:-}
   NETMAP_PIHOLE_VERIFY_TLS: ${NETMAP_PIHOLE_VERIFY_TLS:-}
   NETMAP_MAXMIND_LICENSE_KEY: ${NETMAP_MAXMIND_LICENSE_KEY:-}
+  NETMAP_GEOIP_REFRESH_DAYS: ${NETMAP_GEOIP_REFRESH_DAYS:-}
   NETMAP_ADMIN_PASSWORD: ${NETMAP_ADMIN_PASSWORD:-}
   NETMAP_SESSION_DAYS: ${NETMAP_SESSION_DAYS:-}
   NETMAP_RAW_RETENTION_DAYS: ${NETMAP_RAW_RETENTION_DAYS:-}
@@ -87,6 +88,9 @@ services:
     # The db service isn't reachable by name from here, so use its loopback port.
     network_mode: host
     cap_add: [NET_RAW]
+    # Downloaded GeoIP databases (about 140 MB), kept across restarts and image updates.
+    volumes:
+      - geoip:/app/geoip
     environment:
       <<: *netmap-env
       NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${NETMAP_DB_PUBLISH_PORT:-5433}/${POSTGRES_DB}
@@ -98,3 +102,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+volumes:
+  geoip:

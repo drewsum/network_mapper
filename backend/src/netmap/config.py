@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     port_scan_interval_seconds: float = Field(default=21600.0, ge=0)
     # Seconds between reads of the router's UPnP port mappings.
     upnp_poll_interval_seconds: float = Field(default=300.0, ge=30)
+    # Where the GeoIP databases are kept (a volume, so restarts don't download them again),
+    # and how old MaxMind's may get before they're downloaded again. DB-IP's, used without a
+    # license key, are replaced when each month's release comes out.
+    geoip_dir: str = "/app/geoip"
+    geoip_refresh_days: float = Field(default=7.0, ge=1)
 
     @field_validator("hostname_precedence")
     @classmethod

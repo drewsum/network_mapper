@@ -100,6 +100,9 @@ export interface DeviceDomain {
   new: boolean;
   organization: string | null;
   category: string | null;
+  country: string | null;
+  asn: number | null;
+  asn_org: string | null;
 }
 
 export interface DeviceDomainPage {

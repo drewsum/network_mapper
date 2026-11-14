@@ -28,7 +28,9 @@ ENV NETMAP_WEB_DIST_DIR=/app/web-dist
 # used by the collector alone; the API and the other roles run the plain interpreter.
 RUN apt-get update && apt-get install -y --no-install-recommends libcap2-bin  && cp "$(readlink -f /app/.venv/bin/python)" /app/.venv/bin/python-netraw  && setcap cap_net_raw+ep /app/.venv/bin/python-netraw  && apt-get purge -y libcap2-bin && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --system --uid 10001 netmap
+# /app/geoip holds the downloaded GeoIP databases; compose mounts a volume there, which
+# takes this ownership when it's first created.
+RUN useradd --system --uid 10001 netmap && mkdir /app/geoip && chown netmap /app/geoip
 USER netmap
 EXPOSE 8000
 CMD ["netmap", "api"]

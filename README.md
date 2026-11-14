@@ -73,6 +73,16 @@ Raw DNS queries are kept for `NETMAP_RAW_RETENTION_DAYS` (default 30). Hourly an
 aggregates are kept for 90 and 365 days. These policies are re-applied from env on every
 `netmap migrate`, which runs automatically on startup.
 
+## IP locations (GeoIP)
+
+The collector looks up the country, city and network (ASN) of the IPs that domains resolve
+to. It gets those IPs from Pi-hole's answers and doesn't resolve anything itself. With a free
+MaxMind license key in `NETMAP_MAXMIND_LICENSE_KEY` it uses the GeoLite2 databases and
+re-downloads them every `NETMAP_GEOIP_REFRESH_DAYS`. Without a key it uses
+[DB-IP](https://db-ip.com)'s free Lite databases (CC BY 4.0), which are updated monthly.
+The collector keeps the databases (about 140 MB) in the `geoip` volume. The status bar
+shows a warning if the download fails.
+
 ## Images and CI
 
 There's no CI. Images are built on the machine that runs them (`docker compose up -d --build`):

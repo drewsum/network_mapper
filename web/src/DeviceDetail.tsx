@@ -392,6 +392,31 @@ function Merge({ device: d }: { device: Detail }) {
   );
 }
 
+const REGION_NAMES = new Intl.DisplayNames(undefined, { type: "region" });
+
+function countryName(code: string): string {
+  try {
+    return REGION_NAMES.of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** Where IP locations come from; DB-IP's free databases ask for a credit where shown. */
+function GeoipCredit() {
+  const checks = useQuery({ queryKey: ["status"], queryFn: api.status });
+  const source = checks.data?.find((c) => c.name === "geoip")?.details?.source;
+  if (source === "dbip")
+    return (
+      <p className="muted small">
+        Country and network: <a href="https://db-ip.com">IP Geolocation by DB-IP</a>.
+      </p>
+    );
+  if (source === "maxmind")
+    return <p className="muted small">Country and network: MaxMind GeoLite2.</p>;
+  return null;
+}
+
 const RANGES = [
   { label: "1 hour", hours: 1 },
   { label: "24 hours", hours: 24 },
@@ -462,6 +487,8 @@ function Domains({ mac }: { mac: string }) {
               <th>Domain</th>
               <th>Lookups</th>
               <th>Blocked</th>
+              <th>Country</th>
+              <th>Network</th>
               <th>First seen</th>
               <th>Last</th>
             </tr>
@@ -475,6 +502,10 @@ function Domains({ mac }: { mac: string }) {
                 </td>
                 <td>{d.queries.toLocaleString()}</td>
                 <td className={d.blocked ? "blocked" : "muted"}>{d.blocked ? d.blocked.toLocaleString() : "—"}</td>
+                <td title={d.country ? countryName(d.country) : undefined}>{d.country ?? "—"}</td>
+                <td className="small" title={d.asn ? `AS${d.asn}` : undefined}>
+                  {d.asn_org ?? "—"}
+                </td>
                 <td title={dateTime(d.first_seen)}>{ago(d.first_seen)}</td>
                 <td title={dateTime(d.last_seen)}>{ago(d.last_seen)}</td>
               </tr>
@@ -487,9 +518,7 @@ function Domains({ mac }: { mac: string }) {
           Show more
         </button>
       )}
-      <p className="muted small">
-        Organizations, countries and an activity chart come with enrichment (M3).
-      </p>
+      <GeoipCredit />
     </section>
   );
 }

@@ -10,7 +10,7 @@ from sqlalchemy import select, text
 
 from netmap.api.deps import DB, Mac, get_device
 from netmap.config import get_settings
-from netmap.db.models import DomainIP
+from netmap.db.models import DomainIP, IpInfo
 
 router = APIRouter()
 
@@ -33,6 +33,9 @@ class DeviceDomain(BaseModel):
     new: bool  # first seen within the range
     organization: str | None
     category: str | None
+    country: str | None  # ISO code, where its most recently seen public IP is
+    asn: int | None
+    asn_org: str | None  # the network that IP belongs to
 
 
 class DeviceDomainPage(BaseModel):
@@ -73,7 +76,7 @@ SELECT p.domain, p.queries, p.blocked, p.last_seen,
         WHERE q.mac = :mac AND q.domain = p.domain) AS raw_first,
        (SELECT min(a.bucket) FROM dns_activity_1d a
         WHERE a.mac = :mac AND a.domain = p.domain) AS day_first,
-       d.organization, d.category
+       d.organization, d.category, d.country, d.asn, d.asn_org
 FROM page p LEFT JOIN domains d ON d.domain = p.domain
 ORDER BY {order}
 """
@@ -133,6 +136,9 @@ def device_domains(
                 new=first >= start,
                 organization=r.organization,
                 category=r.category,
+                country=r.country,
+                asn=r.asn,
+                asn_org=r.asn_org,
             )
         )
     return DeviceDomainPage(
@@ -144,6 +150,10 @@ class DomainAddress(BaseModel):
     ip: str
     first_seen: datetime
     last_seen: datetime
+    country: str | None
+    city: str | None
+    asn: int | None
+    asn_org: str | None
 
 
 class AddressDomain(BaseModel):
@@ -168,12 +178,26 @@ def domain_ips(
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> list[DomainAddress]:
-    """IPs the domain resolved to (from Pi-hole's answers), most recently seen first.
-    With start/end, only those seen at some point in that window."""
-    stmt = select(DomainIP).where(DomainIP.domain == domain.rstrip(".").lower())
-    rows = db.scalars(_window(stmt, start, end).order_by(DomainIP.last_seen.desc())).all()
+    """IPs the domain resolved to (from Pi-hole's answers), most recently seen first, with
+    where each is (null until located, and for private addresses). With start/end, only
+    those seen at some point in that window."""
+    stmt = (
+        select(DomainIP, IpInfo)
+        .outerjoin(IpInfo, IpInfo.ip == DomainIP.ip)
+        .where(DomainIP.domain == domain.rstrip(".").lower())
+    )
+    rows = db.execute(_window(stmt, start, end).order_by(DomainIP.last_seen.desc())).all()
     return [
-        DomainAddress(ip=str(r.ip), first_seen=r.first_seen, last_seen=r.last_seen) for r in rows
+        DomainAddress(
+            ip=str(r.ip),
+            first_seen=r.first_seen,
+            last_seen=r.last_seen,
+            country=info.country if info else None,
+            city=info.city if info else None,
+            asn=info.asn if info else None,
+            asn_org=info.asn_org if info else None,
+        )
+        for r, info in rows
     ]
 
 

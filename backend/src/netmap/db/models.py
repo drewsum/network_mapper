@@ -199,7 +199,9 @@ class Domain(Base):
     domain: Mapped[str] = mapped_column(Text, primary_key=True)
     organization: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str | None] = mapped_column(Text)
+    # Where the domain's most recently seen public IP is (see collector/geoip.py).
     country: Mapped[str | None] = mapped_column(Text)
+    city: Mapped[str | None] = mapped_column(Text)
     asn: Mapped[int | None] = mapped_column(Integer)
     asn_org: Mapped[str | None] = mapped_column(Text)
     is_blocklisted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
@@ -218,6 +220,21 @@ class DomainIP(Base):
     ip: Mapped[str] = mapped_column(INET, primary_key=True)
     first_seen: Mapped[datetime] = _ts(server_default=func.now())
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
+
+
+class IpInfo(Base):
+    """Country, city and network (ASN) of an IP, from the GeoIP databases (netmap.geoip).
+    All null for private and reserved addresses."""
+
+    __tablename__ = "ip_info"
+
+    ip: Mapped[str] = mapped_column(INET, primary_key=True)
+    country: Mapped[str | None] = mapped_column(Text)
+    city: Mapped[str | None] = mapped_column(Text)
+    asn: Mapped[int | None] = mapped_column(Integer)
+    asn_org: Mapped[str | None] = mapped_column(Text)
+    # Looked up again once the databases are newer than this.
+    looked_up_at: Mapped[datetime] = _ts()
 
 
 class Port(Base):
