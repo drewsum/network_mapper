@@ -12,7 +12,7 @@ web container.
 | `db` | bridge, DB port published on `127.0.0.1` only | TimescaleDB, data in `${NETMAP_DATA_DIR}/db` |
 | `migrate` | bridge | one-off: migrations + retention policies, then exits |
 | `api` | bridge, `${NETMAP_API_PUBLISH_PORT}` published | API + UI |
-| `collector` | host, `NET_RAW` | LAN discovery (ARP sweep + passive listening), hostnames (DHCP, mDNS, SSDP, NetBIOS, reverse DNS; listens without binding ports), a gentle port/service scan of each online device every 6 h, the router's UPnP port mappings, weekly MAC vendor registry download from the IEEE; reaches the DB on its loopback port |
+| `collector` | host, `NET_RAW` | LAN discovery (ARP sweep + passive listening), hostnames (DHCP, mDNS, SSDP, NetBIOS, reverse DNS; listens without binding ports), a gentle port/service scan of each online device every 6 h, the router's UPnP port mappings, Pi-hole's DNS query log, weekly MAC vendor registry download from the IEEE; reaches the DB on its loopback port |
 
 ## One-time setup
 
