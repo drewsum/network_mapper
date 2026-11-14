@@ -21,6 +21,7 @@ from netmap.db.models import (
     DeviceEvent,
     DeviceIP,
     DeviceName,
+    HealthCheck,
     Port,
     UpnpMapping,
 )
@@ -131,6 +132,16 @@ class DeviceEventOut(BaseModel):
 
 class MergeRequest(BaseModel):
     into: str = Field(pattern=MAC_PATTERN, description="MAC of the device to keep")
+
+
+class HealthCheckOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    status: str
+    message: str
+    details: dict | None
+    checked_at: datetime
 
 
 class PortOut(BaseModel):
@@ -320,6 +331,11 @@ def create_app() -> FastAPI:
                 .order_by(Port.open.desc(), Port.protocol, Port.port)
             )
         )
+
+    @app.get("/api/status", response_model=list[HealthCheckOut])
+    def status(db: DB) -> list[HealthCheck]:
+        """The collector's latest self-checks, such as whether Pi-hole sees devices by IP."""
+        return list(db.scalars(select(HealthCheck).order_by(HealthCheck.name)))
 
     @app.get("/api/upnp-mappings", response_model=list[UpnpMappingOut])
     def upnp_mappings(db: DB) -> list[UpnpMappingOut]:
