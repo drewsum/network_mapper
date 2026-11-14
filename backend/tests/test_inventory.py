@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select, text
 
 from netmap.cli import main
-from netmap.collector.inventory import Sighting, record_sightings
+from netmap.collector.inventory import Sighting, known_addresses, record_sightings
 from netmap.db import get_engine, get_sessionmaker
 from netmap.db.models import Device, DeviceEvent, DeviceIP
 
@@ -78,3 +78,9 @@ def test_no_sightings_still_marks_offline(session):
     record(session, T0 + timedelta(hours=1))
     session.expire_all()
     assert not session.get(Device, A).online
+
+
+def test_known_addresses_uses_latest_ip(session):
+    record(session, T0, **{A: "192.0.2.10", B: "192.0.2.20"})
+    record(session, T0 + timedelta(minutes=2), **{A: "192.0.2.11"})
+    assert known_addresses(session) == {A: "192.0.2.11", B: "192.0.2.20"}

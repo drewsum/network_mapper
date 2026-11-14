@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, select, tuple_, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import distinct_on, insert
 from sqlalchemy.orm import Session
 
 from netmap.db.models import Device, DeviceEvent, DeviceIP
@@ -15,6 +15,16 @@ from netmap.db.models import Device, DeviceEvent, DeviceIP
 class Sighting:
     ip: str
     seen_at: datetime
+
+
+def known_addresses(session: Session) -> dict[str, str]:
+    """Each device's most recently seen IP, as {mac: ip}."""
+    rows = session.execute(
+        select(DeviceIP.mac, DeviceIP.ip)
+        .ext(distinct_on(DeviceIP.mac))
+        .order_by(DeviceIP.mac, DeviceIP.last_seen.desc())
+    )
+    return {mac: str(ip) for mac, ip in rows}
 
 
 def record_sightings(

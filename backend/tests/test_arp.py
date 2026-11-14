@@ -1,6 +1,6 @@
 from ipaddress import IPv4Address, IPv4Network
 
-from netmap.collector.arp import build_request, format_mac, parse_sender
+from netmap.collector.arp import build_request, format_mac, parse_proc_arp, parse_sender
 
 NET = IPv4Network("192.0.2.0/24")
 MAC = bytes.fromhex("020000aabbcc")
@@ -36,3 +36,21 @@ def test_unusable_frames_are_skipped():
 
 def test_format_mac():
     assert format_mac(MAC) == "02:00:00:aa:bb:cc"
+
+
+def test_unicast_request_targets_mac():
+    peer = bytes.fromhex("020000112233")
+    f = build_request(MAC, IPv4Address("192.0.2.10"), IPv4Address("192.0.2.20"), peer)
+    assert f[:6] == peer
+
+
+PROC_ARP = """IP address       HW type     Flags       HW address            Mask     Device
+192.0.2.31       0x1         0x2         B8:27:EB:00:00:01     *        eth0
+192.0.2.32       0x1         0x0         00:00:00:00:00:00     *        eth0
+192.0.2.33       0x1         0x2         02:00:00:00:00:02     *        docker0
+198.51.100.1     0x1         0x2         02:00:00:00:00:03     *        eth0
+"""
+
+
+def test_parse_proc_arp_keeps_complete_lan_entries_on_iface():
+    assert parse_proc_arp(PROC_ARP, "eth0", NET) == {"b8:27:eb:00:00:01": "192.0.2.31"}

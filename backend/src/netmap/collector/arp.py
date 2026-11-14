@@ -4,6 +4,10 @@ One AF_PACKET socket bound to ETH_P_ARP does both: the kernel hands it every ARP
 on the interface (replies to our sweep, and other hosts' requests and announcements),
 so no packet library or BPF filter is needed. Needs CAP_NET_RAW and Linux; on other
 platforms the source disables itself.
+
+Some Wi-Fi devices in power save ignore broadcast ARP but answer unicast, so after the
+broadcast sweep every known device that stayed silent gets a unicast request too. Known
+means seen before (in memory or the DB) or present in this host's own ARP cache.
 """
 
 import asyncio
@@ -15,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from ipaddress import IPv4Address, IPv4Network
 
 from netmap.collector.base import Source
-from netmap.collector.inventory import Sighting, record_sightings
+from netmap.collector.inventory import Sighting, known_addresses, record_sightings
 from netmap.db import get_sessionmaker
 
 log = logging.getLogger(__name__)
@@ -42,8 +46,10 @@ def format_mac(raw: bytes) -> str:
     return ":".join(f"{b:02x}" for b in raw)
 
 
-def build_request(src_mac: bytes, src_ip: IPv4Address, target: IPv4Address) -> bytes:
-    return _ETH.pack(BROADCAST, src_mac, ETH_P_ARP) + _ARP.pack(
+def build_request(
+    src_mac: bytes, src_ip: IPv4Address, target: IPv4Address, dst_mac: bytes = BROADCAST
+) -> bytes:
+    return _ETH.pack(dst_mac, src_mac, ETH_P_ARP) + _ARP.pack(
         1, 0x0800, 6, 4, ARP_REQUEST, src_mac, src_ip.packed, b"\x00" * 6, target.packed
     )
 
@@ -65,6 +71,19 @@ def parse_sender(frame: bytes, network: IPv4Network) -> tuple[str, str] | None:
     if sha in (BROADCAST, b"\x00" * 6) or sha[0] & 1:  # multicast bit
         return None
     return format_mac(sha), str(ip)
+
+
+def parse_proc_arp(text: str, iface: str, network: IPv4Network) -> dict[str, str]:
+    """Complete entries of the kernel ARP cache (/proc/net/arp) on ``iface``, as {mac: ip}."""
+    found = {}
+    for line in text.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) < 6 or fields[5] != iface or not int(fields[2], 16) & 0x2:
+            continue
+        ip, mac = IPv4Address(fields[0]), fields[3].lower()
+        if ip in network and mac != "00:00:00:00:00:00":
+            found[mac] = str(ip)
+    return found
 
 
 def _ifreq(sock: socket.socket, request: int, iface: str) -> bytes:
@@ -104,6 +123,8 @@ class ArpSource(Source):
         self._mac = b""
         self._ip = IPv4Address(0)
         self._seen: dict[str, Sighting] = {}
+        # Last known IP of every device, for the unicast follow-up.
+        self._known: dict[str, str] = {}
 
     def enabled(self) -> bool:
         if sys.platform != "linux" or self.settings.lan_cidr is None:
@@ -122,6 +143,8 @@ class ArpSource(Source):
         sock.setblocking(False)
         asyncio.get_running_loop().add_reader(sock.fileno(), self._on_readable)
         self._sock = sock
+        with get_sessionmaker()() as session:
+            self._known = known_addresses(session)
         log.info("arp: listening on %s (%s, %s)", iface, format_mac(self._mac), self._ip)
         if network.num_addresses > MAX_SWEEP_ADDRESSES:
             log.warning("arp: %s is too large to sweep; listening passively only", network)
@@ -149,6 +172,27 @@ class ArpSource(Source):
                 await asyncio.sleep(SEND_GAP)
         await asyncio.sleep(REPLY_WAIT)
 
+        try:
+            with open("/proc/net/arp") as f:
+                cached = parse_proc_arp(f.read(), self._iface, self.settings.lan_cidr)
+        except OSError:
+            cached = {}
+        silent = {
+            mac: ip
+            for mac, ip in (self._known | cached).items()
+            if mac not in self._seen and ip != str(self._ip)
+        }
+        for mac, ip in silent.items():
+            frame = build_request(
+                self._mac, self._ip, IPv4Address(ip), bytes.fromhex(mac.replace(":", ""))
+            )
+            await loop.sock_sendall(self._sock, frame)
+            await asyncio.sleep(SEND_GAP)
+        if silent:
+            await asyncio.sleep(REPLY_WAIT)
+            answered = sum(mac in self._seen for mac in silent)
+            log.debug("arp: %d of %d silent devices answered unicast", answered, len(silent))
+
     async def run_once(self) -> None:
         if self._sock is None:
             self._open()
@@ -157,6 +201,7 @@ class ArpSource(Source):
         # This host never hears its own ARP, so record it directly.
         self._seen[format_mac(self._mac)] = Sighting(str(self._ip), now)
         seen, self._seen = self._seen, {}
+        self._known.update((mac, s.ip) for mac, s in seen.items())
         offline_after = timedelta(seconds=self.settings.device_offline_after_seconds)
         await asyncio.to_thread(self._record, seen, now, offline_after)
         log.info("arp: sweep done, %d devices heard", len(seen))
