@@ -1,0 +1,153 @@
+# What kind of traffic a domain is, where its organization's category (organizations.yaml)
+# would say otherwise: ad and analytics services of bigger companies, and the plumbing
+# every device uses (connectivity checks, time, certificate status). See
+# netmap/categories.py. The longest matching suffix wins, so a host can be listed under a
+# domain listed elsewhere. Each suffix may appear once.
+
+ads:
+  # Google
+  - doubleclick.net
+  - 2mdn.net
+  - googlesyndication.com
+  - googleadservices.com
+  - googletagservices.com
+  - adservice.google.com
+  # Amazon, Microsoft, Meta, X, others
+  - amazon-adsystem.com
+  - ads.linkedin.com
+  - bat.bing.com
+  - an.facebook.com
+  - ads-api.twitter.com
+  - ads.yahoo.com
+  - ads.tiktok.com
+  # Ad networks and exchanges
+  - adnxs.com
+  - adsrvr.org
+  - criteo.com
+  - criteo.net
+  - taboola.com
+  - outbrain.com
+  - rubiconproject.com
+  - pubmatic.com
+  - openx.net
+  - casalemedia.com
+  - indexww.com
+  - moatads.com
+  - adcolony.com
+  - vungle.com
+  - inmobi.com
+  - chartboost.com
+  - unityads.unity3d.com
+  - ironsrc.mobi
+  - smaato.net
+  - mopub.com
+  - liftoff.io
+  - fyber.com
+  - yandexadexchange.net
+
+analytics:
+  # Google and Firebase
+  - google-analytics.com
+  - analytics.google.com
+  - googletagmanager.com
+  - app-measurement.com
+  - crashlytics.com
+  - firebaselogging-pa.googleapis.com
+  - firebase-settings.crashlytics.com
+  # Microsoft
+  - data.microsoft.com
+  - telemetry.microsoft.com
+  - clarity.ms
+  - browser.events.data.msn.com
+  # Apple
+  - metrics.icloud.com
+  - metrics.apple.com
+  - xp.apple.com
+  # Amazon
+  - device-metrics-us.amazon.com
+  - device-metrics-us-2.amazon.com
+  # Samsung, LG, Roku, Vizio
+  - samsungacr.com
+  - samsungads.com
+  - lgsmartad.com
+  - logs.roku.com
+  - scribe.logs.roku.com
+  - tvinteractive.tv
+  # Adobe
+  - demdex.net
+  - omtrdc.net
+  - adobedtm.com
+  # SDKs and services
+  - mixpanel.com
+  - amplitude.com
+  - segment.io
+  - segment.com
+  - branch.io
+  - app.link
+  - kochava.com
+  - singular.net
+  - newrelic.com
+  - nr-data.net
+  - datadoghq.com
+  - datadoghq.eu
+  - hotjar.com
+  - hotjar.io
+  - fullstory.com
+  - scorecardresearch.com
+  - comscore.com
+  - quantserve.com
+  - chartbeat.com
+  - chartbeat.net
+  - onesignal.com
+  - instabug.com
+  - launchdarkly.com
+  - optimizely.com
+  - split.io
+  - statsig.com
+  - stats.wp.com
+  - plausible.io
+  - online-metrix.net
+
+infrastructure:
+  # Connectivity checks and captive portal detection
+  - connectivitycheck.gstatic.com
+  - connectivitycheck.android.com
+  - clients3.google.com
+  - captive.apple.com
+  - msftconnecttest.com
+  - msftncsi.com
+  - detectportal.firefox.com
+  - nmcheck.gnome.org
+  # Time
+  - time.apple.com
+  - time.google.com
+  - time.windows.com
+  - time.cloudflare.com
+  - time.nist.gov
+  # Certificate status and trust
+  - ocsp.apple.com
+  - ocsp2.apple.com
+  - valid.apple.com
+  - crl.apple.com
+  - ocsp.digicert.com
+  - ocsp.pki.goog
+  - pki.goog
+  - ocsp.sectigo.com
+  - ocsp.usertrust.com
+  - ocsp.comodoca.com
+  - ocsp.godaddy.com
+  - ocsp.globalsign.com
+  - ocsp.entrust.net
+  - crl.microsoft.com
+  - oneocsp.microsoft.com
+  - ctldl.windowsupdate.com
+  - amazontrust.com
+  # Reverse DNS and local names
+  - in-addr.arpa
+  - ip6.arpa
+  - home.arpa
+  # Public DNS
+  - dns.google
+  - cloudflare-dns.com
+  - one.one.one.one
+  - dns.quad9.net

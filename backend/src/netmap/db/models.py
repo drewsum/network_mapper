@@ -16,7 +16,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB, MACADDR
+from sqlalchemy.dialects.postgresql import ARRAY, CIDR, INET, JSONB, MACADDR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 DEVICE_CATEGORIES = ("iot", "phone", "computer", "infrastructure", "media", "unknown")
@@ -195,16 +195,25 @@ class DnsQuery(Base):
 
 class Domain(Base):
     __tablename__ = "domains"
-    __table_args__ = (Index("ix_domains_organization", "organization"),)
+    __table_args__ = (
+        Index("ix_domains_organization", "organization"),
+        Index("ix_domains_category", "category"),
+    )
 
     domain: Mapped[str] = mapped_column(Text, primary_key=True)
     organization: Mapped[str | None] = mapped_column(Text)
+    # Kind of traffic (netmap/categories.py).
     category: Mapped[str | None] = mapped_column(Text)
     # Where the domain's most recently seen public IP is (see collector/geoip.py).
     country: Mapped[str | None] = mapped_column(Text)
     city: Mapped[str | None] = mapped_column(Text)
     asn: Mapped[int | None] = mapped_column(Integer)
     asn_org: Mapped[str | None] = mapped_column(Text)
+    # Whether Pi-hole blocked the domain's most recent query.
+    pihole_blocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Lists the domain, or an IP it resolved to, is on (netmap/blocklists.py), "pihole"
+    # included; is_blocklisted is set for a threat list only, i.e. one other than Pi-hole.
+    blocklists: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
     is_blocklisted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     first_seen: Mapped[datetime] = _ts(server_default=func.now())
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
@@ -236,6 +245,39 @@ class IpInfo(Base):
     asn_org: Mapped[str | None] = mapped_column(Text)
     # Looked up again once the databases are newer than this.
     looked_up_at: Mapped[datetime] = _ts()
+
+
+class Blocklist(Base):
+    """A threat list's last successful download (netmap/blocklists.py)."""
+
+    __tablename__ = "blocklists"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    entries: Mapped[int] = mapped_column(Integer)
+    refreshed_at: Mapped[datetime] = _ts()
+
+
+class BlocklistDomain(Base):
+    __tablename__ = "blocklist_domains"
+
+    list: Mapped[str] = mapped_column(Text, primary_key=True)
+    domain: Mapped[str] = mapped_column(Text, primary_key=True)
+
+
+class BlocklistNetwork(Base):
+    __tablename__ = "blocklist_networks"
+    # For matching IPs with ip <<= network.
+    __table_args__ = (
+        Index(
+            "ix_blocklist_networks_network",
+            "network",
+            postgresql_using="gist",
+            postgresql_ops={"network": "inet_ops"},
+        ),
+    )
+
+    list: Mapped[str] = mapped_column(Text, primary_key=True)
+    network: Mapped[str] = mapped_column(CIDR, primary_key=True)
 
 
 class OrgRule(Base):

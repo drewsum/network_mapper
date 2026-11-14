@@ -8,7 +8,8 @@ A domain is classified, in order, by:
 2. the longest matching suffix in the bundled map,
 3. the network its most recently seen IP is in: the app's rules, then the bundled map,
 
-and is grouped as "Other" if nothing matches.
+and is grouped as "Other" if nothing matches. Each organization in the map also has a
+category (netmap/categories.py): "vendor" unless its entry says otherwise.
 """
 
 import re
@@ -17,6 +18,8 @@ from functools import cache
 from pathlib import Path
 
 import yaml
+
+from netmap import categories
 
 BUNDLE = Path(__file__).parent / "data" / "organizations.yaml"
 OTHER = "Other"
@@ -56,19 +59,27 @@ def normalize_name(value: str) -> str:
 class OrgMap:
     suffixes: dict[str, str] = field(default_factory=dict)
     asns: dict[int, str] = field(default_factory=dict)
+    categories: dict[str, str] = field(default_factory=dict)  # organization -> category
 
 
 def parse_map(raw: object) -> OrgMap:
-    """{organization: {domains: [...], asns: [...]}} -> OrgMap. Raises ValueError on
-    anything malformed, or a suffix or ASN listed under two organizations."""
+    """{organization: {domains: [...], asns: [...], category: ...}} -> OrgMap. Raises
+    ValueError on anything malformed, or a suffix or ASN listed under two organizations."""
     if not isinstance(raw, dict):
-        raise ValueError("expected a mapping of organization -> {domains, asns}")
+        raise ValueError("expected a mapping of organization -> {domains, asns, category}")
     suffixes: dict[str, str] = {}
     asns: dict[int, str] = {}
+    cats: dict[str, str] = {}
     for org, entry in raw.items():
         org = normalize_name(str(org))
-        if not isinstance(entry, dict) or not set(entry) <= {"domains", "asns"}:
-            raise ValueError(f"{org}: expected only 'domains' and 'asns' lists")
+        if not isinstance(entry, dict) or not set(entry) <= {"domains", "asns", "category"}:
+            raise ValueError(f"{org}: expected only 'domains', 'asns' and 'category'")
+        category = entry.get("category", categories.VENDOR)
+        if category not in categories.ORG_CATEGORIES:
+            raise ValueError(
+                f"{org}: category must be one of {', '.join(categories.ORG_CATEGORIES)}"
+            )
+        cats[org] = category
         for key, target, normalize in (
             ("domains", suffixes, normalize_suffix),
             ("asns", asns, normalize_asn),
@@ -81,7 +92,7 @@ def parse_map(raw: object) -> OrgMap:
                 if value in target:
                     raise ValueError(f"{value} is listed under both {target[value]} and {org}")
                 target[value] = org
-    return OrgMap(suffixes, asns)
+    return OrgMap(suffixes, asns, cats)
 
 
 @cache
@@ -115,6 +126,13 @@ class Classifier:
         if org is None and asn is not None:
             org = self.rules.asns.get(asn) or self.base.asns.get(asn)
         return org or OTHER
+
+    def category(self, org: str | None) -> str:
+        """An organization's category: the map's, "vendor" for ones only the app's rules
+        name, and "unknown" for Other."""
+        if org is None or org == OTHER:
+            return categories.UNKNOWN
+        return self.base.categories.get(org, categories.VENDOR)
 
     def names(self) -> list[str]:
         """Every organization the map and rules know of."""

@@ -100,6 +100,7 @@ export interface DeviceDomain {
   new: boolean;
   organization: string | null;
   category: string | null;
+  blocklists: string[];
   country: string | null;
   asn: number | null;
   asn_org: string | null;
@@ -119,6 +120,59 @@ export type DomainSort = "queries" | "last_seen" | "domain";
 export interface Organization {
   name: string;
   domains: number;
+}
+
+export interface DomainCategory {
+  category: string;
+  label: string;
+  domains: number;
+}
+
+export interface BlocklistInfo {
+  name: string;
+  label: string;
+  url: string;
+  entries: number | null;
+  refreshed_at: string | null;
+  needs_key: boolean;
+}
+
+export interface FlaggedDomain {
+  domain: string;
+  organization: string | null;
+  category: string | null;
+  blocklists: string[];
+  last_seen: string;
+}
+
+export interface Blocklists {
+  lists: BlocklistInfo[];
+  labels: Record<string, string>;
+  flagged: FlaggedDomain[];
+}
+
+/** Display names for domain categories (backend netmap/categories.py). */
+export const DOMAIN_CATEGORY_LABELS: Record<string, string> = {
+  ads: "Ads & trackers",
+  analytics: "Telemetry & analytics",
+  vendor: "Vendor cloud",
+  cdn: "CDN & hosting",
+  infrastructure: "Internet infrastructure",
+  unknown: "Unknown",
+};
+
+/** Display names for blocklists (backend netmap/blocklists.py). */
+export const BLOCKLIST_LABELS: Record<string, string> = {
+  pihole: "Pi-hole",
+  firehol_level1: "FireHOL level1",
+  feodo: "abuse.ch Feodo Tracker",
+  urlhaus: "abuse.ch URLhaus",
+  threatfox: "abuse.ch ThreatFox",
+};
+
+/** Threat lists a domain is on: every hit but Pi-hole's own blocking. */
+export function threats(lists: string[]): string[] {
+  return lists.filter((l) => l !== "pihole");
 }
 
 export type OrgRuleKind = "suffix" | "asn";
@@ -185,6 +239,8 @@ export const api = {
   saveOrgRule: (rule: Pick<OrgRule, "kind" | "value" | "organization">) =>
     request<OrgRuleSaved>("POST", "/api/org-rules", rule),
   deleteOrgRule: (id: number) => request<OrgRuleSaved>("DELETE", `/api/org-rules/${id}`),
+  domainCategories: () => get<DomainCategory[]>("/api/categories"),
+  blocklists: () => get<Blocklists>("/api/blocklists"),
 };
 
 /** What to call a device: the owner's label, else what it calls itself, else its maker. */

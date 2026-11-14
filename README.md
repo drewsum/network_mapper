@@ -90,8 +90,27 @@ see which companies a device talks to. The grouping comes from a curated map in
 `backend/src/netmap/data/organizations.yaml`. The domain's longest matching suffix decides
 first. If no suffix matches, the network (ASN) its IP is in decides, so a Tuya domain hosted
 on AWS still counts as Tuya. Domains that match neither are grouped as "Other". Rules you
-add on the Organizations page take precedence over the map, and saving one regroups every
-domain right away.
+add on the Domains page take precedence over the map, and saving one regroups every domain
+right away.
+
+## Categories and blocklists
+
+Each domain also gets a category: ads and trackers, telemetry and analytics, vendor cloud,
+CDN and hosting, internet infrastructure (connectivity checks, time, certificate status), or
+unknown. Ad and analytics services come from `backend/src/netmap/data/categories.yaml` and
+from words in the name (`ads.`, `telemetry.`, `metrics.`). Domains Pi-hole blocks count as
+ads and trackers. Everything else takes its organization's category.
+
+Domains are also matched against threat blocklists, downloaded every
+`NETMAP_BLOCKLIST_REFRESH_HOURS` (24 by default). A domain is flagged when its name, or any
+IP it has resolved to, is on a list:
+
+- FireHOL level1 and abuse.ch Feodo Tracker need no account.
+- abuse.ch URLhaus and ThreatFox need a free Auth-Key from https://auth.abuse.ch/ in
+  `NETMAP_ABUSECH_AUTH_KEY`. Without one they're skipped.
+
+Flagged domains carry a red "threat" tag in a device's DNS table and are listed on the
+Domains page. Download problems show on the status bar as the "blocklists" check.
 
 ## Images and CI
 

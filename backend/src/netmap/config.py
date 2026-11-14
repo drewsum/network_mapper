@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     rdns_server: IPv4Address | None = None
     pihole_password: SecretStr | None = None
     maxmind_license_key: SecretStr | None = None
+    # Free abuse.ch Auth-Key (auth.abuse.ch): adds the URLhaus and ThreatFox blocklists.
+    abusech_auth_key: SecretStr | None = None
     # Seconds between reads of Pi-hole's query log.
     pihole_poll_seconds: float = Field(default=15.0, ge=5)
     # Pi-hole's HTTPS certificate is self-signed by default; false skips checking it.
@@ -79,6 +81,8 @@ class Settings(BaseSettings):
     # license key, are replaced when each month's release comes out.
     geoip_dir: str = "/app/geoip"
     geoip_refresh_days: float = Field(default=7.0, ge=1)
+    # How old a threat blocklist may get before it's downloaded again.
+    blocklist_refresh_hours: float = Field(default=24.0, ge=1)
 
     @field_validator("hostname_precedence")
     @classmethod

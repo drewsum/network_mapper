@@ -55,7 +55,7 @@ export function App() {
   if (!s) page = session.error ? <p className="error">API unreachable.</p> : null;
   else if (needsLogin) page = <Login />;
   else if (device) page = <DeviceDetailPage key={device[1]} mac={device[1].toLowerCase()} />;
-  else if (hash === "#/organizations") page = <OrganizationsPage />;
+  else if (hash === "#/domains" || hash === "#/organizations") page = <OrganizationsPage />;
   else page = <DeviceTable />;
 
   return (
@@ -65,7 +65,7 @@ export function App() {
           <a href="#/" className="brand">
             Network Mapper
           </a>
-          {signedIn && <a href="#/organizations">Organizations</a>}
+          {signedIn && <a href="#/domains">Domains</a>}
           <span className={health.data?.status === "ok" ? "pill ok" : "pill bad"}>
             {health.isPending ? "checking…" : health.data ? `API ${health.data.version}` : "API down"}
           </span>

@@ -5,9 +5,10 @@ import {
   type DeviceDetail as Detail,
   type DeviceEvent,
   deviceName,
+  DOMAIN_CATEGORY_LABELS,
   type DomainSort,
 } from "./api";
-import { ago, CategorySelect, dateTime, EditableText, Status, useUpdateDevice } from "./ui";
+import { ago, CategorySelect, dateTime, EditableText, Status, ThreatTag, useUpdateDevice } from "./ui";
 
 const DETAIL_LABELS: Record<string, string> = {
   friendly_name: "Friendly name",
@@ -495,6 +496,7 @@ function Domains({ mac }: { mac: string }) {
               <th>Blocked</th>
               <th>Country</th>
               <th>Organization</th>
+              <th>Category</th>
               <th>First seen</th>
               <th>Last</th>
             </tr>
@@ -505,11 +507,13 @@ function Domains({ mac }: { mac: string }) {
                 <td className="domain">
                   {d.domain}
                   {d.new && <span className="tag">new</span>}
+                  <ThreatTag lists={d.blocklists} />
                 </td>
                 <td>{d.queries.toLocaleString()}</td>
                 <td className={d.blocked ? "blocked" : "muted"}>{d.blocked ? d.blocked.toLocaleString() : "—"}</td>
                 <td title={d.country ? countryName(d.country) : undefined}>{d.country ?? "—"}</td>
                 <td title={network(d.asn, d.asn_org)}>{d.organization ?? "—"}</td>
+                <td>{d.category ? (DOMAIN_CATEGORY_LABELS[d.category] ?? d.category) : "—"}</td>
                 <td title={dateTime(d.first_seen)}>{ago(d.first_seen)}</td>
                 <td title={dateTime(d.last_seen)}>{ago(d.last_seen)}</td>
               </tr>
