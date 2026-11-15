@@ -8,7 +8,6 @@ latest packets. It ends at its time limit, or when someone presses Stop (the API
 """
 
 import logging
-import math
 import re
 import shutil
 import signal
@@ -50,10 +49,11 @@ def merged(files: list[Path], chunk: int = 1 << 20):
 
 
 def tcpdump_command(binary: str, iface: str, mac: str, path: Path, max_bytes: int) -> list[str]:
-    file_mb = max(1, math.ceil(max_bytes / RING_FILES / 1_000_000))  # -C is in millions
+    # -C is in kilobytes with a "k" suffix (tcpdump 4.99+), so small limits hold too.
+    file_kb = max(1, max_bytes // RING_FILES // 1000)
     return [
         binary, "-i", iface, "-n", "-U", "-s", "0", "-w", str(path),
-        "-C", str(file_mb), "-W", str(RING_FILES), "ether", "host", mac,
+        "-C", f"{file_kb}k", "-W", str(RING_FILES), "ether", "host", mac,
     ]  # fmt: skip
 
 
