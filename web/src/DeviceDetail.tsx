@@ -9,7 +9,7 @@ import {
   DOMAIN_CATEGORY_LABELS,
   type DomainSort,
 } from "./api";
-import { ago, CategorySelect, dateTime, EditableText, Status, ThreatTag, useUpdateDevice } from "./ui";
+import { ago, CategorySelect, countryName, dateTime, EditableText, Status, ThreatTag, useUpdateDevice } from "./ui";
 
 const DETAIL_LABELS: Record<string, string> = {
   friendly_name: "Friendly name",
@@ -405,16 +405,6 @@ function Merge({ device: d }: { device: Detail }) {
       {merge.error && <p className="error">{merge.error.message}</p>}
     </section>
   );
-}
-
-const REGION_NAMES = new Intl.DisplayNames(undefined, { type: "region" });
-
-function countryName(code: string): string {
-  try {
-    return REGION_NAMES.of(code) ?? code;
-  } catch {
-    return code;
-  }
 }
 
 /** The network a domain's IP is in, for a tooltip: "Network: Amazon.com, Inc. (AS16509)". */

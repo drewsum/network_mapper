@@ -43,7 +43,7 @@ function tickLabel(iso: string, bucketSeconds: number): string {
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-function bucketLabel(p: ActivityPoint, bucketSeconds: number): string {
+export function bucketLabel(p: ActivityPoint, bucketSeconds: number): string {
   const from = new Date(p.time);
   const to = new Date(from.getTime() + bucketSeconds * 1000);
   if (bucketSeconds >= 86400) return from.toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -57,7 +57,8 @@ function topRounded(x: number, y: number, w: number, h: number, r: number): stri
   return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
 }
 
-function Chart({ data }: { data: DeviceActivity }) {
+/** Allowed and blocked lookups per bucket, stacked, with a hover tooltip. */
+export function Chart({ data }: { data: Pick<DeviceActivity, "bucket_seconds" | "points"> }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const points = data.points;
@@ -156,7 +157,7 @@ function Chart({ data }: { data: DeviceActivity }) {
   );
 }
 
-function bucketName(seconds: number): string {
+export function bucketName(seconds: number): string {
   if (seconds >= 86400) return "day";
   if (seconds >= 3600) return "hour";
   return seconds >= 900 ? "15 minutes" : "minute";

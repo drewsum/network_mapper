@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { api, UNAUTHORIZED_EVENT } from "./api";
 import { DeviceDetailPage } from "./DeviceDetail";
 import { DeviceTable } from "./DeviceTable";
+import { HistoryPage } from "./History";
 import { Login } from "./Login";
 import { OrganizationsPage } from "./Organizations";
 
@@ -59,6 +60,7 @@ export function App() {
   else if (needsLogin) page = <Login />;
   else if (device) page = <DeviceDetailPage key={device[1]} mac={device[1].toLowerCase()} />;
   else if (hash === "#/domains" || hash === "#/organizations") page = <OrganizationsPage />;
+  else if (hash === "#/history") page = <HistoryPage />;
   else if (hash === "#/map")
     page = (
       <Suspense fallback={<p className="muted">Loading…</p>}>
@@ -75,6 +77,7 @@ export function App() {
             Network Mapper
           </a>
           {signedIn && <a href="#/map">Map</a>}
+          {signedIn && <a href="#/history">History</a>}
           {signedIn && <a href="#/domains">Domains</a>}
           <span className={health.data?.status === "ok" ? "pill ok" : "pill bad"}>
             {health.isPending ? "checking…" : health.data ? `API ${health.data.version}` : "API down"}

@@ -203,3 +203,19 @@ td.blocked { color: var(--bad); }
 .network-map .tooltip { position: absolute; }
 .swatch.offline { background: var(--line); border: 1px dashed var(--muted); }
 .swatch.ring { background: transparent; border: 2px solid var(--chart-blocked); border-radius: 50%; }
+
+/* History explorer */
+.custom-range { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.custom-range input { padding: 3px 6px; font-size: 13px; }
+.custom-range button { font-size: 13px; padding: 4px 10px; }
+.custom-range button.on { background: var(--accent-soft); color: var(--accent); font-weight: 550; }
+.chips.filters { margin: 0 0 12px; }
+.toolbar-row h2 { margin: 0 12px 0 0; }
+.breakdown tr.clickable { cursor: pointer; }
+.breakdown tr.clickable:hover td { background: var(--accent-soft); }
+.breakdown td.share { position: relative; min-width: 160px; }
+.breakdown td.share .bar {
+  position: absolute; left: 0; top: 50%; height: 6px; margin-top: 9px; border-radius: 3px;
+  background: var(--chart-allowed); opacity: 0.8; min-width: 2px;
+}
+.breakdown .open { margin-left: 8px; font-size: 12px; }

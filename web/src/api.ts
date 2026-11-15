@@ -161,6 +161,39 @@ export interface DeviceSummary {
   categories: Share[];
 }
 
+export type HistoryDimension = "device" | "domain" | "organization" | "country" | "asn" | "category" | "status";
+
+export interface HistoryFilters {
+  mac?: string;
+  domain?: string;
+  organization?: string;
+  country?: string;
+  asn?: string;
+  category?: string;
+}
+
+export interface HistoryRow {
+  key: string;
+  label: string;
+  queries: number;
+  blocked: number;
+  domains: number;
+}
+
+export interface History {
+  start: string;
+  end: string;
+  bucket_seconds: number;
+  source: string;
+  queries: number;
+  blocked: number;
+  domains: number;
+  devices: number;
+  points: ActivityPoint[];
+  by: HistoryDimension;
+  rows: HistoryRow[];
+}
+
 export type DomainSort = "queries" | "last_seen" | "domain";
 
 export interface Organization {
@@ -279,6 +312,10 @@ export const api = {
   summary: (mac: string, start: string) =>
     get<DeviceSummary>(`/api/devices/${mac}/summary?${new URLSearchParams({ start })}`),
   ports: (mac: string) => get<Port[]>(`/api/devices/${mac}/ports`),
+  history: (start: string, end: string | undefined, by: HistoryDimension, filters: HistoryFilters) =>
+    get<History>(
+      `/api/history?${new URLSearchParams({ start, ...(end ? { end } : {}), by, ...(filters as Record<string, string>) })}`,
+    ),
   map: (minutes: number) => get<NetworkMap>(`/api/map?minutes=${minutes}`),
   upnpMappings: () => get<UpnpMapping[]>("/api/upnp-mappings"),
   updateDevice: (mac: string, changes: DeviceUpdate) =>
