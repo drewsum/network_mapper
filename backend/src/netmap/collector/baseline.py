@@ -39,14 +39,19 @@ SPIKE_MIN = 200
 SPIKE_FACTOR = 4
 SPIKE_WINDOW = timedelta(days=7)
 
-# Names that never leave the LAN, and the registrable part of a public one: the last two
-# labels, or three under a two-level suffix like co.uk.
-_LOCAL = r"\.(arpa|local|lan|localdomain|localhost|internal|home)$"
-_SITE = (
-    r"COALESCE(CASE WHEN s.domain ~ '\.(com|net|org|gov|edu|ac|co|ne|or|go)\.[a-z]{2}$'"
-    r" THEN substring(s.domain from '([^.]+\.[^.]+\.[^.]+)$')"
-    r" ELSE substring(s.domain from '([^.]+\.[^.]+)$') END, s.domain)"
-)
+# Names that never leave the LAN (a regex for SQL's ~).
+LOCAL_NAME = r"\.(arpa|local|lan|localdomain|localhost|internal|home)$"
+
+
+def site_sql(column: str) -> str:
+    """SQL for the site (registrable part) of a lowercase domain in ``column``: the last two
+    labels, or three under a two-level suffix like co.uk."""
+    return (
+        rf"COALESCE(CASE WHEN {column} ~ '\.(com|net|org|gov|edu|ac|co|ne|or|go)\.[a-z]{{2}}$'"
+        rf" THEN substring({column} from '([^.]+\.[^.]+\.[^.]+)$')"
+        rf" ELSE substring({column} from '([^.]+\.[^.]+)$') END, {column})"
+    )
+
 
 _UPSERT = text(
     """
@@ -56,14 +61,14 @@ _UPSERT = text(
         WHERE (q.bucket >= :since
                OR NOT EXISTS (SELECT 1 FROM device_baselines b WHERE b.mac = q.mac))
           AND q.domain LIKE '%.%' AND lower(q.domain) !~ '"""
-    + _LOCAL
+    + LOCAL_NAME
     + """'
     ), keys AS (
         SELECT s.mac, s.bucket, k.key_type, k.key FROM seen s
         LEFT JOIN domains d ON d.domain = s.domain
         CROSS JOIN LATERAL (VALUES
             ('domain', """
-    + _SITE
+    + site_sql("s.domain")
     + """),
             ('org', NULLIF(d.organization, :other)),
             ('country', d.country),
