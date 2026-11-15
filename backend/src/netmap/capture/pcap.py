@@ -1,7 +1,7 @@
 """Packet captures of one device, asked for in the UI (api/captures.py) and run here with
 tcpdump on the SPAN interface.
 
-Each capture is a ring of RING_FILES files in NETMAP_CAPTURES_DIR: when the ring is full the
+Each capture is a ring of up to RING_FILES files in NETMAP_CAPTURES_DIR: when it is full the
 oldest file is overwritten, so a capture never takes more than its size limit and holds the
 latest packets. It ends at its time limit, or when someone presses Stop (the API sets
 ``ended_at``). Only the newest NETMAP_PCAP_KEEP captures' files are kept.
