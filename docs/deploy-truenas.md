@@ -2,7 +2,7 @@
 
 netmap runs on TrueNAS SCALE 24.10 or later (the Docker-based releases) as a compose stack
 of five containers. The image is built on the TrueNAS host from a git checkout, so nothing is
-published to a registry and the repo can stay private.
+published to a registry.
 
 There are two ways to run the stack, both from the same `deploy/portainer-compose.yml`:
 
@@ -39,14 +39,16 @@ There are two ways to run the stack, both from the same `deploy/portainer-compos
 
 ## First deploy
 
-1. **Clone the repo** into the dataset. For a private repo, add a read-only deploy key on
-   GitHub (repo *Settings → Deploy keys*, without write access) and clone over SSH with it:
+1. **Clone the repo** into the dataset:
 
    ```sh
    cd /mnt/<pool>/apps/network_mapper
-   git clone git@github.com:<you>/network_mapper.git src
+   git clone https://github.com/drewsum/network_mapper.git src
    cd src
    ```
+
+   For a private fork, add a read-only deploy key on GitHub (repo *Settings → Deploy keys*,
+   without write access) and clone over SSH with it instead.
 
 2. **Write `.env`** in the checkout from `.env.example`, and add these lines at the top so a
    bare `docker compose` uses the server stack and builds the image:

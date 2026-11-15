@@ -26,8 +26,9 @@ backups are in [backups.md](backups.md) and hardening in [security.md](security.
    environment, and an access token for it. Stacks it creates are visible only to it and to
    admins. Other stacks should not be set to *Public* access control, or this user can manage
    them too.
-3. **Repo access.** A GitHub fine-grained token with read-only **Contents** access to this
-   repo only. Portainer uses it to clone.
+3. **Repo access.** None needed for the public repo. For a private fork, a GitHub
+   fine-grained token with read-only **Contents** access to that repo only; Portainer uses it
+   to clone.
 4. **SSH (optional).** A TrueNAS user with key-only login, a home directory inside the project
    dataset, and *Allowed sudo commands with no password* set to `/usr/bin/docker` only. Leave
    *Allow all sudo commands with no password* off. TrueNAS hides the `docker` group from the
@@ -42,7 +43,8 @@ working tree.
 In Portainer, as the non-admin user: **Stacks → Add stack → Repository**.
 
 - Repository URL: this repo's HTTPS URL. Reference: `refs/heads/main` (or a branch under test).
-- Authentication: on, with the GitHub username and the read-only token.
+- Authentication: off for the public repo; for a private fork, on, with the GitHub username
+  and the read-only token.
 - Compose path: `deploy/portainer-compose.yml`.
 - Environment variables: every variable from `.env.example`, filled in. Also set
   `NETMAP_DATA_DIR` to the dataset path. The dev-only `NETMAP_WEB_PUBLISH_PORT` isn't used.
