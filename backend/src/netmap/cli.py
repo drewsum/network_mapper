@@ -14,11 +14,13 @@ def cmd_migrate(_: argparse.Namespace) -> None:
     from alembic.config import Config
 
     from netmap.db import get_engine
-    from netmap.db.policies import apply_policies
+    from netmap.db.policies import apply_policies, refresh_recent_aggregates
 
     command.upgrade(Config(str(ALEMBIC_INI)), "head")
     with get_engine().begin() as conn:
         apply_policies(conn, get_settings())
+    with get_engine().connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        refresh_recent_aggregates(conn)
 
 
 def cmd_api(_: argparse.Namespace) -> None:

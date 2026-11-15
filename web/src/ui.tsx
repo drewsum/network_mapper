@@ -120,3 +120,14 @@ export function ThreatTag({ lists }: { lists: string[] }) {
     </span>
   );
 }
+
+const REGION_NAMES = new Intl.DisplayNames(undefined, { type: "region" });
+
+/** "US" -> "United States"; the code itself if the browser doesn't know it. */
+export function countryName(code: string): string {
+  try {
+    return REGION_NAMES.of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
