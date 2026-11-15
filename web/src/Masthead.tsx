@@ -16,13 +16,24 @@ const TAGLINE = 8;
 const HORIZON = 9;
 const FPS = 30;
 
+function rgba([r, g, b]: number[], a: number) {
+  return `rgba(${r},${g},${b},${a})`;
+}
+
 const SCRAMBLE = "!<>-_\\/[]{}=+*^?#%01ABCDEF";
 const HEX = "0123456789abcdef";
 const WAVE = " .·:-=+";
 
-const CYAN = [0, 240, 255];
+// Atelier ASCII's Cyberpunk theme (#0B0420 on a #3D2BFF, #00E5FF, #FF2BD6, #FFF04D ramp),
+// with an orange between its yellow and magenta.
+const CYAN = [0, 229, 255];
 const MAGENTA = [255, 43, 214];
-const YELLOW = "#f8ef3a";
+const AMBER = [255, 166, 61];
+const YELLOW = "#fff04d";
+// The wordmark, top row to bottom.
+const LETTER_COLORS = [[255, 240, 77], AMBER, MAGENTA, [128, 134, 234], CYAN].map((c, i) =>
+  rgba(c, i === 0 ? 0.92 : 1),
+);
 const SHADOW = "#4a1d8a";
 
 // 5x5 letters; the masthead shears them into italics.
@@ -42,8 +53,6 @@ const SCAN_EVERY = 8;
 const SCAN_TAKES = 1.4;
 
 const pick = (chars: string) => chars[Math.floor(Math.random() * chars.length)];
-const rgba = ([r, g, b]: number[], a: number) => `rgba(${r},${g},${b},${a})`;
-const mix = (x: number[], y: number[], f: number) => x.map((v, i) => Math.round(v + (y[i] - v) * f));
 
 interface Drop {
   col: number;
@@ -51,6 +60,7 @@ interface Drop {
   speed: number; // rows a second
   len: number;
   chars: string[];
+  amber: boolean;
 }
 
 /** What depends on the canvas width: the grid, where the wordmark's cells are, the rain. */
@@ -72,6 +82,7 @@ function newDrop(cols: number, top: boolean): Drop {
     speed: 5 + Math.random() * 11,
     len,
     chars: Array.from({ length: len }, () => pick(HEX)),
+    amber: Math.random() < 0.25,
   };
 }
 
@@ -156,7 +167,7 @@ function draw(
     for (let i = 0; i < d.len; i++) {
       const r = Math.floor(d.y) - i;
       if (r < 0 || r >= HORIZON || !free(d.col, r)) continue;
-      at(d.chars[(r + d.len) % d.len], d.col, r, i === 0 ? "#d8fbff" : rgba(CYAN, (1 - i / d.len) * 0.55));
+      at(d.chars[(r + d.len) % d.len], d.col, r, i === 0 ? (d.amber ? "#fff6b0" : "#d8fbff") : rgba(d.amber ? AMBER : CYAN, (1 - i / d.len) * 0.55));
     }
   }
 
@@ -195,7 +206,7 @@ function draw(
       at(pick(SCRAMBLE), c, r, t < lock ? rgba(CYAN, 0.8) : "#ffffff");
       continue;
     }
-    const color = rgba(mix(MAGENTA, CYAN, s.letterRow[i] / 4), 1);
+    const color = LETTER_COLORS[s.letterRow[i]];
     const ch = Math.sin(c * 0.25 - t * 2.5 + r * 0.6) > 0.92 ? "▓" : "█";
     if (Math.abs(c - bar) < 5) {
       g.globalCompositeOperation = "lighter";
@@ -215,7 +226,7 @@ function draw(
   const w = out.canvas.width;
   const h = out.canvas.height;
   const bg = out.createLinearGradient(0, 0, 0, h);
-  bg.addColorStop(0, "#0d0620");
+  bg.addColorStop(0, "#0b0420");
   bg.addColorStop(HORIZON / ROWS, "#160830");
   bg.addColorStop(1, "#05030b");
   out.setTransform(1, 0, 0, 1, 0, 0);
