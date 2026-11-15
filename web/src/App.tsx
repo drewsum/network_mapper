@@ -49,6 +49,13 @@ function LimitsBanner() {
   );
 }
 
+const NAV = [
+  ["#/map", "Map"],
+  ["#/history", "History"],
+  ["#/flows", "Flows"],
+  ["#/domains", "Domains"],
+];
+
 const DEVICE_ROUTE = /^#\/devices\/([0-9a-f]{2}(?::[0-9a-f]{2}){5})$/i;
 
 function useHash(): string {
@@ -117,20 +124,23 @@ export function App() {
   return (
     <main>
       <header className="app-head">
-        <div className="left">
-          <a href="#/" className="brand">
-            Network Mapper
-          </a>
-          {signedIn && <a href="#/map">Map</a>}
-          {signedIn && <a href="#/history">History</a>}
-          {signedIn && <a href="#/flows">Flows</a>}
-          {signedIn && <a href="#/domains">Domains</a>}
-          <span className={health.data?.status === "ok" ? "pill ok" : "pill bad"}>
-            {health.isPending ? "checking…" : health.data ? `API ${health.data.version}` : "API down"}
-          </span>
-        </div>
+        <a href="#/" className="brand">
+          Network Mapper
+        </a>
+        {signedIn && (
+          <nav className="nav">
+            {NAV.map(([href, label]) => (
+              <a key={href} href={href} aria-current={hash === href ? "page" : undefined}>
+                {label}
+              </a>
+            ))}
+          </nav>
+        )}
+        <span className={health.data?.status === "ok" ? "pill ok" : "pill bad"}>
+          {health.isPending ? "checking…" : health.data ? `API ${health.data.version}` : "API down"}
+        </span>
         {s?.auth_enabled && s.authenticated && (
-          <button type="button" className="plain" onClick={() => logout.mutate()}>
+          <button type="button" className="plain logout" onClick={() => logout.mutate()}>
             Log out
           </button>
         )}

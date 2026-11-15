@@ -183,7 +183,7 @@ function Names({ device: d }: { device: Detail }) {
   return (
     <section className="card">
       <h2>What it calls itself</h2>
-      <table>
+      <table className="stack">
         <thead>
           <tr>
             <th>Source</th>
@@ -199,7 +199,7 @@ function Names({ device: d }: { device: Detail }) {
                 {n.source}
                 {n.source === d.hostname_source && <span className="tag">shown</span>}
               </td>
-              <td>{n.name ?? "—"}</td>
+              <td data-label="Name">{n.name ?? "—"}</td>
               <td className="small">
                 {Object.entries(n.details ?? {})
                   .filter(([k]) => k !== "friendly_name")
@@ -209,7 +209,9 @@ function Names({ device: d }: { device: Detail }) {
                     </div>
                   ))}
               </td>
-              <td title={dateTime(n.last_seen)}>{ago(n.last_seen)}</td>
+              <td data-label="Heard" title={dateTime(n.last_seen)}>
+                {ago(n.last_seen)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -251,7 +253,7 @@ function Ports({ mac }: { mac: string }) {
       <h2>Open ports</h2>
       {ports.data?.length === 0 && <p className="muted">No open ports found (or not scanned yet).</p>}
       {!!ports.data?.length && (
-        <table>
+        <table className="stack">
           <thead>
             <tr>
               <th>Port</th>
@@ -269,7 +271,9 @@ function Ports({ mac }: { mac: string }) {
                 </td>
                 <td>{p.service ?? "—"}</td>
                 <td className="mono small">{p.banner ?? ""}</td>
-                <td title={dateTime(p.first_seen)}>{ago(p.first_seen)}</td>
+                <td data-label="Since" title={dateTime(p.first_seen)}>
+                  {ago(p.first_seen)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -286,7 +290,7 @@ function Forwards({ mac }: { mac: string }) {
   return (
     <section className="card">
       <h2>Router port forwards (UPnP)</h2>
-      <table>
+      <table className="stack">
         <thead>
           <tr>
             <th>External</th>
@@ -302,11 +306,13 @@ function Forwards({ mac }: { mac: string }) {
                 {m.external_port}/{m.protocol}
                 {!m.active && <span className="tag">gone</span>}
               </td>
-              <td className="mono">
+              <td className="mono" data-label="To">
                 {m.internal_ip}:{m.internal_port}
               </td>
               <td>{m.description ?? "—"}</td>
-              <td title={dateTime(m.first_seen)}>{ago(m.first_seen)}</td>
+              <td data-label="Since" title={dateTime(m.first_seen)}>
+                {ago(m.first_seen)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -497,7 +503,7 @@ function Domains({ mac, start }: { mac: string; start: string }) {
       )}
       {first && first.total === 0 && <p className="muted">No DNS lookups in this range.</p>}
       {items.length > 0 && (
-        <table>
+        <table className="stack">
           <thead>
             <tr>
               <th>Domain</th>
@@ -518,13 +524,26 @@ function Domains({ mac, start }: { mac: string; start: string }) {
                   {d.new && <span className="tag">new</span>}
                   <ThreatTag lists={d.blocklists} />
                 </td>
-                <td>{d.queries.toLocaleString()}</td>
-                <td className={d.blocked ? "blocked" : "muted"}>{d.blocked ? d.blocked.toLocaleString() : "—"}</td>
-                <td title={d.country ? countryName(d.country) : undefined}>{d.country ?? "—"}</td>
-                <td title={network(d.asn, d.asn_org)}>{d.organization ?? "—"}</td>
-                <td>{d.category ? (DOMAIN_CATEGORY_LABELS[d.category] ?? d.category) : "—"}</td>
-                <td title={dateTime(d.first_seen)}>{ago(d.first_seen)}</td>
-                <td title={dateTime(d.last_seen)}>{ago(d.last_seen)}</td>
+                <td data-label="Lookups">{d.queries.toLocaleString()}</td>
+                <td data-label="Blocked" className={d.blocked ? "blocked" : "muted hide-narrow"}>
+                  {d.blocked ? d.blocked.toLocaleString() : "—"}
+                </td>
+                {/* Unknowns read as a bare dash once stacked on a phone; leave them out there. */}
+                <td title={d.country ? countryName(d.country) : undefined} className={d.country ? undefined : "hide-narrow"}>
+                  {d.country ?? "—"}
+                </td>
+                <td title={network(d.asn, d.asn_org)} className={d.organization ? undefined : "hide-narrow"}>
+                  {d.organization ?? "—"}
+                </td>
+                <td className={d.category ? undefined : "hide-narrow"}>
+                  {d.category ? (DOMAIN_CATEGORY_LABELS[d.category] ?? d.category) : "—"}
+                </td>
+                <td data-label="First" title={dateTime(d.first_seen)}>
+                  {ago(d.first_seen)}
+                </td>
+                <td data-label="Last" title={dateTime(d.last_seen)}>
+                  {ago(d.last_seen)}
+                </td>
               </tr>
             ))}
           </tbody>

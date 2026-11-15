@@ -241,7 +241,7 @@ function Blocklists() {
       )}
       {data?.flagged.length === 0 && <p className="muted small">No domains on a threat list.</p>}
       {data && data.flagged.length > 0 && (
-        <table>
+        <table className="stack">
           <thead>
             <tr>
               <th>Flagged domain</th>
@@ -258,7 +258,9 @@ function Blocklists() {
                 <td>{threats(d.blocklists).map((l) => BLOCKLIST_LABELS[l] ?? l).join(", ")}</td>
                 <td>{d.organization ?? "—"}</td>
                 <td>{d.category ? (DOMAIN_CATEGORY_LABELS[d.category] ?? d.category) : "—"}</td>
-                <td title={dateTime(d.last_seen)}>{ago(d.last_seen)}</td>
+                <td data-label="Seen" title={dateTime(d.last_seen)}>
+                  {ago(d.last_seen)}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -149,8 +149,11 @@ tr.chosen td { font-weight: 550; }
   .count { margin-left: 0; width: 100%; }
   .facts div { grid-template-columns: 90px 1fr; }
 }
-.app-head { justify-content: space-between; }
-.app-head .left { display: flex; align-items: center; gap: 12px; }
+.app-head { flex-wrap: wrap; }
+.nav { display: flex; gap: 12px; }
+.nav a[aria-current="page"] { font-weight: 600; }
+.app-head .logout { margin-left: auto; }
+.narrow-only { display: none; }
 .warning { background: #fff4d6; color: #6b4e00; padding: 8px 12px; border-radius: 6px; margin: 0 0 12px; font-size: 14px; }
 @media (prefers-color-scheme: dark) {
   .warning { background: #3a2f12; color: #f0d48a; }
@@ -204,6 +207,8 @@ td.blocked { color: var(--bad); }
 .network-map { position: relative; padding: 0; overflow: hidden; }
 .network-map .cy { height: min(72vh, 760px); min-height: 420px; }
 .network-map .tooltip { position: absolute; }
+/* Phones: touches go past cytoscape to the page (scroll); the card handles taps. */
+.network-map .cy.static { min-height: 0; pointer-events: none; }
 .swatch.offline { background: var(--line); border: 1px dashed var(--muted); }
 .swatch.ring { background: transparent; border: 2px solid var(--chart-blocked); border-radius: 50%; }
 
@@ -231,4 +236,46 @@ td.blocked { color: var(--bad); }
   .swatch.layer-device { background: #3987e5; }
   .swatch.layer-org { background: #199e70; }
   .swatch.layer-country { background: #d95926; }
+}
+
+/* Phones: one column, stacked table rows, finger-sized targets. 16px side gutter. */
+@media (max-width: 600px) {
+  main { padding: 12px 16px 32px; }
+  .app-head { gap: 4px 10px; margin-bottom: 12px; }
+  .brand { font-size: 19px; white-space: nowrap; }
+  .app-head .pill { margin-left: auto; }
+  .app-head .logout { margin-left: 0; padding: 8px; }
+  /* Its own row, scrolling sideways if it ever outgrows the screen. */
+  .nav { order: 1; flex-basis: 100%; gap: 4px; overflow-x: auto; margin: 0 -8px; }
+  .nav a { padding: 8px; white-space: nowrap; }
+  .nav a[aria-current="page"] { background: var(--accent-soft); border-radius: 6px; text-decoration: none; }
+  .detail { gap: 12px; }
+  .detail > .title { margin: 4px 0 0; font-size: 22px; }
+  .detail-head h1 { font-size: 22px; }
+  .detail > .range-bar { margin: 0; }
+  .card { padding: 12px; }
+  .grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .narrow-only { display: initial; }
+  .hide-narrow { display: none; }
+  .toolbar select, .toolbar input, .segmented button, .chip, .custom-range button { min-height: 36px; }
+  .search { flex-basis: 100%; }
+  .segmented { max-width: 100%; overflow-x: auto; }
+  .segmented button { white-space: nowrap; }
+  .custom-range input { flex: 1 1 150px; min-width: 0; }
+  .breakdown td.share { min-width: 90px; }
+  .open { display: inline-block; padding: 6px 0; }
+
+  /* A table row becomes a block: the first cell is its title, the rest wrap below as
+     "label value" pairs. Cells opt in to a label with data-label. */
+  table.stack thead { display: none; }
+  table.stack tr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  table.stack td { border: none; padding: 0; font-size: 13px; }
+  table.stack td:first-child { flex-basis: 100%; font-size: 14px; }
+  table.stack td[data-label]::before { content: attr(data-label) " "; color: var(--muted); }
+  table.stack td:empty { display: none; }
+  .table-wrap table.stack tr { padding: 10px 12px; }
+  .devices td { order: 2; }
+  .devices td:first-child { order: 0; }
+  .devices td.vendor { order: 1; flex-basis: 100%; color: var(--muted); }
+  .devices tr.offline td.vendor { color: var(--muted); }
 }

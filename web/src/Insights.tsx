@@ -31,15 +31,19 @@ function colors() {
 
 type Colors = ReturnType<typeof colors>;
 
-/** An ECharts instance on a div, resized with it, redrawn when ``data`` changes or the
- * color scheme flips. */
-function useChart<T>(data: T | undefined, build: (data: T, c: Colors) => echarts.EChartsCoreOption) {
+/** Below this chart width, lay out for a phone. */
+const NARROW = 560;
+
+/** An ECharts instance on a div, resized with it, redrawn when ``data`` changes, the color
+ * scheme flips, or the div crosses the phone width. */
+function useChart<T>(data: T | undefined, build: (data: T, c: Colors, width: number) => echarts.EChartsCoreOption) {
   const ref = useRef<HTMLDivElement>(null);
   const builder = useRef(build);
   useEffect(() => {
     builder.current = build;
   });
   const [scheme, setScheme] = useState(DARK.matches);
+  const [narrow, setNarrow] = useState(false);
   useEffect(() => {
     const flip = () => setScheme(DARK.matches);
     DARK.addEventListener("change", flip);
@@ -49,7 +53,10 @@ function useChart<T>(data: T | undefined, build: (data: T, c: Colors) => echarts
     const el = ref.current;
     if (!el) return;
     const chart = echarts.init(el);
-    const observer = new ResizeObserver(() => chart.resize());
+    const observer = new ResizeObserver(() => {
+      chart.resize();
+      setNarrow(el.clientWidth < NARROW);
+    });
     observer.observe(el);
     return () => {
       observer.disconnect();
@@ -59,14 +66,20 @@ function useChart<T>(data: T | undefined, build: (data: T, c: Colors) => echarts
   useEffect(() => {
     const el = ref.current;
     const chart = el && echarts.getInstanceByDom(el);
-    if (chart && data !== undefined) chart.setOption(builder.current(data, colors()), { notMerge: true });
-  }, [data, scheme]);
+    if (chart && data !== undefined) chart.setOption(builder.current(data, colors(), el.clientWidth), { notMerge: true });
+  }, [data, scheme, narrow]);
   return ref;
 }
 
-function sankeyOption(data: Flows, c: Colors): echarts.EChartsCoreOption {
+function sankeyOption(data: Flows, c: Colors, width: number): echarts.EChartsCoreOption {
+  const narrow = width < NARROW;
   const label = (layer: string, text: string) =>
     layer === "country" && text.length === 2 ? countryName(text) : text;
+  // Labels sit right of their node. On a phone, cut each to the room before the next
+  // column (or the right margin, for countries) instead of letting them overlap.
+  const right = narrow ? 92 : 140;
+  const fit = (width: number) => ({ label: { width, overflow: "truncate", ellipsis: "…" } });
+  const column = (width - 8 - right) / 2 - 20;
   return {
     tooltip: {
       trigger: "item",
@@ -82,7 +95,7 @@ function sankeyOption(data: Flows, c: Colors): echarts.EChartsCoreOption {
       {
         type: "sankey",
         left: 8,
-        right: 140,
+        right,
         top: 8,
         bottom: 8,
         // Wide enough for a label even beside a node too thin to see.
@@ -91,7 +104,12 @@ function sankeyOption(data: Flows, c: Colors): echarts.EChartsCoreOption {
         layoutIterations: 32,
         draggable: false,
         emphasis: { focus: "adjacency" },
-        label: { color: c.fg, fontSize: 12, formatter: (p: { data: { label: string; layer: string } }) => label(p.data.layer, p.data.label) },
+        label: {
+          color: c.fg,
+          fontSize: narrow ? 11 : 12,
+          formatter: (p: { data: { label: string; layer: string } }) => label(p.data.layer, p.data.label),
+        },
+        levels: narrow ? [{ depth: 0, ...fit(column) }, { depth: 1, ...fit(column) }, { depth: 2, ...fit(right - 10) }] : [],
         lineStyle: { color: "source", opacity: 0.25, curveness: 0.5 },
         itemStyle: { borderWidth: 0 },
         data: data.nodes.map((n) => ({
@@ -183,10 +201,15 @@ export function HeatmapCard({ mac }: { mac?: string }) {
     queryFn: () => api.heatmap(start, tz, mac),
   });
   const data = heat.data;
-  const ref = useChart(data, (data, c) => {
-    const dayLabels = data.days.map((d) =>
-      new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }),
-    );
+  const ref = useChart(data, (data, c, width) => {
+    const narrow = width < NARROW;
+    const dayLabels = data.days.map((d) => {
+      const date = new Date(`${d}T12:00:00`);
+      // "Sat 14": some locales put a bare day number before the weekday.
+      return narrow
+        ? `${date.toLocaleDateString(undefined, { weekday: "short" })} ${date.getDate()}`
+        : date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    });
     return {
       tooltip: {
         backgroundColor: c.card,
@@ -195,11 +218,11 @@ export function HeatmapCard({ mac }: { mac?: string }) {
         formatter: (p: { value: [number, number, number] }) =>
           `${dayLabels[p.value[1]]}, ${hourLabel(p.value[0])}–${hourLabel((p.value[0] + 1) % 24)}<br/>${p.value[2].toLocaleString()} lookups`,
       },
-      grid: { left: 96, right: 16, top: 8, bottom: 64 },
+      grid: { left: narrow ? 52 : 96, right: narrow ? 4 : 16, top: 8, bottom: 64 },
       xAxis: {
         type: "category",
         data: Array.from({ length: 24 }, (_, h) => hourLabel(h)),
-        axisLabel: { color: c.muted, fontSize: 11, interval: 2 },
+        axisLabel: { color: c.muted, fontSize: 11, interval: narrow ? 5 : 2 },
         axisLine: { show: false },
         axisTick: { show: false },
         splitArea: { show: false },
@@ -230,7 +253,7 @@ export function HeatmapCard({ mac }: { mac?: string }) {
           type: "heatmap",
           // x = hour, y = day; empty cells are left out, so the card shows through.
           data: data.cells.map(([day, hour, n]) => [hour, day, n]),
-          itemStyle: { borderColor: c.card, borderWidth: 2, borderRadius: 3 },
+          itemStyle: { borderColor: c.card, borderWidth: narrow ? 1 : 2, borderRadius: narrow ? 2 : 3 },
           emphasis: { itemStyle: { borderColor: c.fg, borderWidth: 1 } },
         },
       ],

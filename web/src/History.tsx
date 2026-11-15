@@ -163,7 +163,19 @@ export function HistoryPage() {
       <section className="card">
         <div className="row toolbar-row">
           <h2>Breakdown</h2>
-          <div className="segmented" role="group" aria-label="Break down by">
+          <select
+            className="narrow-only"
+            value={by}
+            onChange={(e) => setBy(e.target.value as HistoryDimension)}
+            aria-label="Break down by"
+          >
+            {DIMENSIONS.map((d) => (
+              <option key={d.by} value={d.by}>
+                By {d.label.toLowerCase()}
+              </option>
+            ))}
+          </select>
+          <div className="segmented hide-narrow" role="group" aria-label="Break down by">
             {DIMENSIONS.map((d) => (
               <button
                 key={d.by}
