@@ -125,6 +125,15 @@ times its usual busy hour. A device page's "Normal behavior" card shows the base
 the latest changes. Phones and computers get a baseline but no changes recorded, since new
 sites are everyday for them. Changing the learning period applies to past data too.
 
+## IoT report
+
+The IoT report page lists, for each IoT device (category IoT, or ticked IoT), the sites it
+looked up and sorts each one: its maker's own cloud (the MAC vendor or UPnP manufacturer
+matches the site's organization), infrastructure (CDNs, hosting, time, DNS), trackers and
+telemetry, threats, or other third parties. Mark a site expected or unexpected for a device
+and the report remembers it. Lookups between midnight and 6 am in your time zone are counted
+separately. "Download CSV" exports the report as shown.
+
 ## Images and CI
 
 There's no CI. Images are built on the machine that runs them (`docker compose up -d --build`):

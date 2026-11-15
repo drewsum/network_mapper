@@ -91,6 +91,37 @@ export interface DeviceEvent {
   details: { key?: string; label?: string; lookups?: number; usual?: number } | null;
 }
 
+export type SiteStatus = "threat" | "expected" | "unexpected" | "tracker" | "maker" | "infrastructure" | "third_party";
+
+export interface ReportSite {
+  site: string;
+  status: SiteStatus;
+  expected: boolean | null;
+  organization: string | null;
+  category: string | null;
+  lookups: number;
+  night: number;
+  blocked: number;
+  domains: string[];
+}
+
+export interface ReportDevice {
+  mac: string;
+  label: string | null;
+  hostname: string | null;
+  vendor: string | null;
+  lookups: number;
+  night: number;
+  flagged: number;
+  sites: ReportSite[];
+}
+
+export interface IotReport {
+  start: string;
+  tz: string;
+  devices: ReportDevice[];
+}
+
 export interface Baseline {
   learning_days: number;
   since: string | null;
@@ -354,6 +385,14 @@ export const api = {
     get<DeviceSummary>(`/api/devices/${mac}/summary?${new URLSearchParams({ start })}`),
   ports: (mac: string) => get<Port[]>(`/api/devices/${mac}/ports`),
   baseline: (mac: string) => get<Baseline>(`/api/devices/${mac}/baseline`),
+  iotReport: (start: string, tz: string) =>
+    get<IotReport>(`/api/reports/iot?start=${encodeURIComponent(start)}&tz=${encodeURIComponent(tz)}`),
+  iotReportCsv: (start: string, tz: string) =>
+    `/api/reports/iot.csv?start=${encodeURIComponent(start)}&tz=${encodeURIComponent(tz)}`,
+  setExpected: (mac: string, site: string, expected: boolean | null) =>
+    request<{ expected: boolean | null }>("PUT", `/api/devices/${mac}/sites/${encodeURIComponent(site)}/expected`, {
+      expected,
+    }),
   history: (start: string, end: string | undefined, by: HistoryDimension, filters: HistoryFilters) =>
     get<History>(
       `/api/history?${new URLSearchParams({ start, ...(end ? { end } : {}), by, ...(filters as Record<string, string>) })}`,
