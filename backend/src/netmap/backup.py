@@ -217,15 +217,20 @@ def restore(
     admin = _admin_engine(settings, "postgres")
     try:
         with admin.connect() as conn:
+            # Clients only: TimescaleDB's background workers stay connected, and FORCE ends them.
             others = conn.scalar(
-                text("SELECT count(*) FROM pg_stat_activity WHERE datname = :db"), {"db": target}
+                text(
+                    "SELECT count(*) FROM pg_stat_activity"
+                    " WHERE datname = :db AND backend_type = 'client backend'"
+                ),
+                {"db": target},
             )
             if others:
                 raise BackupError(
                     f"{others} other connection(s) to {target}: stop the api and collector first"
                 )
             quoted = conn.dialect.identifier_preparer.quote(target)
-            conn.execute(text(f"DROP DATABASE IF EXISTS {quoted}"))
+            conn.execute(text(f"DROP DATABASE IF EXISTS {quoted} WITH (FORCE)"))
             conn.execute(text(f"CREATE DATABASE {quoted}"))
     finally:
         admin.dispose()

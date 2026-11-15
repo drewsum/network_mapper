@@ -179,10 +179,10 @@ def test_api_trusts_only_the_configured_proxies(monkeypatch):
     monkeypatch.setattr(uvicorn, "run", lambda *a, **kw: seen.update(kw))
     cli.cmd_api(None)
     assert seen["forwarded_allow_ips"] is None  # uvicorn's default: loopback only
-    monkeypatch.setenv("NETMAP_TRUSTED_PROXIES", "172.16.0.0/12")
+    monkeypatch.setenv("NETMAP_TRUSTED_PROXIES", "198.51.100.0/24")
     get_settings.cache_clear()
     cli.cmd_api(None)
-    assert seen["forwarded_allow_ips"] == "172.16.0.0/12"
+    assert seen["forwarded_allow_ips"] == "198.51.100.0/24"
 
 
 @pytest.fixture

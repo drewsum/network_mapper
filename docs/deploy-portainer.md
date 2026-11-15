@@ -5,13 +5,16 @@ The server runs netmap as a Portainer **Git-repository stack** from
 can't run image builds (it fails with `mkdir /.docker: permission denied`), so the image is
 built on the host over SSH with `scripts/build-on-host.sh`, and the stack uses `netmap:local`
 with `pull_policy: never`. The API container also serves the built UI, so there's no separate
-web container.
+web container. To run the same stack without Portainer, see
+[deploy-truenas.md](deploy-truenas.md), which also covers restarts, logs and resource limits;
+backups are in [backups.md](backups.md) and hardening in [security.md](security.md).
 
 | Service | Network | Purpose |
 |---|---|---|
 | `db` | bridge, DB port published on `127.0.0.1` only | TimescaleDB, data in `${NETMAP_DATA_DIR}/db` |
 | `migrate` | bridge | one-off: migrations + retention policies, then exits |
 | `api` | bridge, `${NETMAP_API_PUBLISH_PORT}` published | API + UI |
+| `backup` | bridge | daily `pg_dump` into `${NETMAP_DATA_DIR}/backups`, keeping 14 ([backups.md](backups.md)) |
 | `collector` | host, `NET_RAW` | LAN discovery (ARP sweep + passive listening), hostnames (DHCP, mDNS, SSDP, NetBIOS, reverse DNS; listens without binding ports), a gentle port/service scan of each online device every 6 h, the router's UPnP port mappings, Pi-hole's DNS query log, weekly MAC vendor registry download from the IEEE; reaches the DB on its loopback port |
 
 ## One-time setup
@@ -49,7 +52,7 @@ Portainer doesn't write a `stack.env` file that compose can read for Git stacks.
 new `NETMAP_*` setting, add it to `x-netmap-env` in `deploy/portainer-compose.yml` too.
 
 Build the image first (`bash scripts/build-on-host.sh`, see the dev loop), then deploy and check that `db` and `api` are healthy, `migrate` exited with code 0, and
-`collector` is healthy. The UI is at `http://<truenas-host>:<NETMAP_API_PUBLISH_PORT>`.
+`collector` and `backup` are healthy. The UI is at `http://<truenas-host>:<NETMAP_API_PUBLISH_PORT>`.
 
 ## Environment variables
 
@@ -57,9 +60,10 @@ Same as `.env.example`, plus:
 
 | Variable | Purpose |
 |---|---|
-| `NETMAP_DATA_DIR` | Host path of the project dataset. The DB lives in `<this>/db`. Required. |
+| `NETMAP_DATA_DIR` | Host path of the project dataset. The DB lives in `<this>/db` and backups in `<this>/backups`. Required. |
 | `NETMAP_API_PUBLISH_PORT` | Host port for the API and UI (default 8000). Pick one no other app uses. |
 | `NETMAP_DB_PUBLISH_PORT` | Loopback-only DB port (default 5433). The collector connects through it. |
+| `NETMAP_APP_MEMORY_LIMIT` / `NETMAP_DB_MEMORY_LIMIT` | Memory limits per container (default `1g` / `2g`). |
 
 Set `NETMAP_ADMIN_PASSWORD` (from `.env.example`) on the server: without it the UI and API
 are open to anyone on the LAN, and the UI shows a warning saying so. Changing it logs

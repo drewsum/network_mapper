@@ -196,5 +196,14 @@ registry, and the repo stays private.
 
 ## Deploying on TrueNAS
 
-The server runs `deploy/portainer-compose.yml` as a Portainer Git-repository stack. See
-[docs/deploy-portainer.md](docs/deploy-portainer.md).
+The server stack is `deploy/portainer-compose.yml`: TimescaleDB, the API and UI, the
+collector (host networking, `NET_RAW` only), and a daily backup. Run it with plain
+`docker compose` from a checkout on the host ([docs/deploy-truenas.md](docs/deploy-truenas.md),
+updated with `git pull && sudo docker compose up -d --build`), or as a Portainer
+Git-repository stack ([docs/deploy-portainer.md](docs/deploy-portainer.md)).
+
+- [docs/backups.md](docs/backups.md): daily database dumps, restoring one, and CSV/JSON export.
+- [docs/security.md](docs/security.md): what's locked down, secrets, and HTTPS through a
+  reverse proxy (`NETMAP_TRUSTED_PROXIES`).
+
+The **System** page in the UI shows the self-checks, the latest backup, and the exports.
