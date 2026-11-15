@@ -55,6 +55,11 @@ class Settings(BaseSettings):
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    # Addresses of reverse proxies whose X-Forwarded-For/-Proto headers to trust, comma
+    # separated (IPs or CIDRs, or * for any). Needed for HTTPS through a proxy on another host
+    # or container: login cookies are then marked Secure, and logins are rate-limited per
+    # real client.
+    trusted_proxies: str | None = None
     web_dist_dir: str | None = None
     # How long a login lasts.
     session_days: float = Field(default=30.0, gt=0)
@@ -98,6 +103,14 @@ class Settings(BaseSettings):
     notify_max_per_hour: int = Field(default=10, ge=1)
     # The app's address as seen from a phone, for links in notifications. Optional.
     public_url: str | None = None
+
+    # `netmap backup`: a database dump into backup_dir every backup_interval_hours, keeping
+    # the newest backup_keep. The server stack mounts <NETMAP_DATA_DIR>/backups there.
+    backup_dir: str = "/backups"
+    backup_interval_hours: float = Field(default=24.0, ge=1)
+    backup_keep: int = Field(default=14, ge=1)
+    # Where pg_dump and pg_restore are; the image installs PostgreSQL 16's.
+    pg_bin_dir: str = "/usr/lib/postgresql/16/bin"
 
     @field_validator("hostname_precedence")
     @classmethod

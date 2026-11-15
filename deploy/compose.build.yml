@@ -1,0 +1,9 @@
+# Builds netmap:local from this checkout, for running the server stack with plain
+# `docker compose` on the host instead of Portainer (docs/deploy-truenas.md):
+#   docker compose -f deploy/portainer-compose.yml -f deploy/compose.build.yml up -d --build
+# Every app service shares the image, so only migrate builds it; the rest wait for it.
+services:
+  migrate:
+    image: ${NETMAP_IMAGE:-netmap:local}
+    build:
+      context: ..

@@ -8,6 +8,7 @@ import { HistoryPage } from "./History";
 import { Login } from "./Login";
 import { OrganizationsPage } from "./Organizations";
 import { ReportPage } from "./Report";
+import { SystemPage } from "./System";
 
 // Cytoscape is big; load it only when the map is opened.
 const NetworkMapPage = lazy(() => import("./NetworkMap"));
@@ -58,6 +59,7 @@ const NAV = [
   ["#/domains", "Domains"],
   ["#/report", "IoT report"],
   ["#/alerts", "Alerts"],
+  ["#/system", "System"],
 ];
 
 const DEVICE_ROUTE = /^#\/devices\/([0-9a-f]{2}(?::[0-9a-f]{2}){5})$/i;
@@ -119,6 +121,7 @@ export function App() {
   else if (hash === "#/history") page = <HistoryPage />;
   else if (hash === "#/report") page = <ReportPage />;
   else if (hash === "#/alerts") page = <AlertsPage />;
+  else if (hash === "#/system") page = <SystemPage />;
   else if (hash === "#/flows")
     page = (
       <Suspense fallback={<p className="muted">Loading…</p>}>

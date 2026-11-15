@@ -22,6 +22,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+      # First-run initdb (and TimescaleDB's tuning restart) can take minutes on a ZFS dataset;
+      # failures during it don't count.
+      start_period: 5m
     restart: unless-stopped
 
   migrate:

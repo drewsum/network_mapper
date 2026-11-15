@@ -9,6 +9,12 @@ export interface Session {
   authenticated: boolean;
 }
 
+export interface ExportDataset {
+  name: string;
+  label: string;
+  by_time: boolean;
+}
+
 export interface HealthCheck {
   name: string;
   status: "ok" | "warning" | "unknown";
@@ -452,6 +458,9 @@ export const api = {
   health: () => get<Health>("/api/health"),
   session: () => get<Session>("/api/auth/session"),
   status: () => get<HealthCheck[]>("/api/status"),
+  exportDatasets: () => get<ExportDataset[]>("/api/export"),
+  exportUrl: (name: string, format: "csv" | "json", days?: number) =>
+    `/api/export/${name}.${format}${days ? `?days=${days}` : ""}`,
   login: (password: string) => request<Session>("POST", "/api/auth/login", { password }),
   logout: () => request<Session>("POST", "/api/auth/logout"),
   devices: () => get<Device[]>("/api/devices"),
