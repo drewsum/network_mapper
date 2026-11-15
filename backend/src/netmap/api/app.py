@@ -15,14 +15,18 @@ from netmap.api import (
     alerts,
     auth,
     baseline,
+    captures,
     categories,
     dns,
     export,
     history,
+    live,
+    metrics,
     network,
     orgs,
     pihole,
     report,
+    traffic,
 )
 from netmap.api.deps import DB, MAC_PATTERN, Mac, get_device
 from netmap.collector.inventory import known_addresses, merge_devices
@@ -36,6 +40,7 @@ from netmap.db.models import (
     HealthCheck,
     Port,
     UpnpMapping,
+    WifiClient,
 )
 
 Category = Literal[DEVICE_CATEGORIES]  # type: ignore[valid-type]
@@ -82,6 +87,8 @@ class DeviceOut(BaseModel):
     is_iot: bool
     notes: str | None
     online: bool
+    critical: bool
+    offline_grace_minutes: int | None
     first_seen: datetime
     last_seen: datetime
     ip: str | None = None  # most recently seen
@@ -97,6 +104,9 @@ class DeviceUpdate(BaseModel):
     category: Category | None = None
     is_iot: bool | None = None
     notes: str | None = Field(default=None, max_length=10_000)
+    critical: bool | None = None
+    # null: NETMAP_CRITICAL_GRACE_MINUTES
+    offline_grace_minutes: int | None = Field(default=None, ge=3, le=7 * 24 * 60)
 
     @field_validator("label", "notes")
     @classmethod
@@ -127,11 +137,30 @@ class DeviceNameOut(BaseModel):
     last_seen: datetime
 
 
+class WifiOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source: str
+    ap_name: str | None
+    ssid: str | None
+    band: str | None
+    channel: int | None
+    signal_dbm: int | None
+    rx_rate_kbps: int | None
+    tx_rate_kbps: int | None
+    connected: bool
+    connected_since: datetime | None
+    last_seen: datetime
+
+
 class DeviceDetail(DeviceOut):
     merged_into: str | None
     aliases: list[str]  # MACs merged into this device
     ips: list[DeviceIPOut]
     names: list[DeviceNameOut]
+    fingerbank: dict | None  # Fingerbank's guess from the DHCP fingerprint
+    wifi: WifiOut | None  # from the Wi-Fi controller, when one is set up
+    critical_grace_default: int  # NETMAP_CRITICAL_GRACE_MINUTES
 
 
 class DeviceEventOut(BaseModel):
@@ -199,6 +228,13 @@ def _detail(db: Session, device: Device) -> DeviceDetail:
     aliases = db.scalars(
         select(Device.mac).where(Device.merged_into == device.mac).order_by(Device.mac)
     ).all()
+    # The device's own MAC, or failing that one merged into it (a phone's older address).
+    wifi = db.scalars(
+        select(WifiClient)
+        .where(WifiClient.mac.in_([device.mac, *aliases]))
+        .order_by(WifiClient.connected.desc(), WifiClient.last_seen.desc())
+        .limit(1)
+    ).first()
     return DeviceDetail.model_validate(
         {
             **DeviceOut.model_validate(device).model_dump(),
@@ -207,6 +243,9 @@ def _detail(db: Session, device: Device) -> DeviceDetail:
             "aliases": list(aliases),
             "ips": ips,
             "names": names,
+            "fingerbank": device.fingerbank,
+            "wifi": wifi,
+            "critical_grace_default": get_settings().critical_grace_minutes,
         }
     )
 
@@ -306,8 +345,8 @@ def create_app() -> FastAPI:
         if device.merged_into:
             raise HTTPException(409, f"merged into {device.merged_into}; edit that device")
         values = changes.model_dump(exclude_unset=True)
-        if values.get("category", "") is None or values.get("is_iot", False) is None:
-            raise HTTPException(422, "category and is_iot can't be null")
+        if any(values.get(k, "") is None for k in ("category", "is_iot", "critical")):
+            raise HTTPException(422, "category, is_iot and critical can't be null")
         for field, value in values.items():
             setattr(device, field, value)
         db.commit()
@@ -397,6 +436,10 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(pihole.router)
     app.include_router(export.router)
+    app.include_router(traffic.router)
+    app.include_router(captures.router)
+    app.include_router(live.router)
+    app.include_router(metrics.router)
     _mount_spa(app, settings.web_dist_dir)
     return app
 

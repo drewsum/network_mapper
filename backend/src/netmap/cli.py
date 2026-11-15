@@ -1,4 +1,4 @@
-"""`netmap <command>` â€” single entry point for every container role."""
+"""`netmap <command>` — single entry point for every container role."""
 
 import argparse
 import logging
@@ -46,6 +46,14 @@ def cmd_collector(_: argparse.Namespace) -> None:
     asyncio.run(run(get_settings()))
 
 
+def cmd_capture(_: argparse.Namespace) -> None:
+    import asyncio
+
+    from netmap.capture.main import run
+
+    asyncio.run(run(get_settings()))
+
+
 def cmd_backup(args: argparse.Namespace) -> None:
     from netmap.backup import run_backups
 
@@ -88,6 +96,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     sub.add_parser("api", help="run the web API").set_defaults(func=cmd_api)
     sub.add_parser("collector", help="run the collector").set_defaults(func=cmd_collector)
+    sub.add_parser(
+        "capture", help="run traffic capture (SPAN port, NetFlow/IPFIX, packet captures)"
+    ).set_defaults(func=cmd_capture)
     backup_p = sub.add_parser("backup", help="dump the database to NETMAP_BACKUP_DIR on a schedule")
     backup_p.add_argument("--once", action="store_true", help="dump now, then exit")
     backup_p.set_defaults(func=cmd_backup)

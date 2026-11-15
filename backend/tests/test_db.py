@@ -26,8 +26,8 @@ def test_migrate_is_idempotent(db_env):
             # job_id >= 1000: user policies; lower ids are TimescaleDB's built-in jobs.
             text("SELECT count(*) FROM timescaledb_information.jobs WHERE job_id >= 1000")
         ).scalar_one()
-    # 2 compression + 3 refresh + 5 retention, no duplicates after re-running.
-    assert jobs == 10
+    # 2 compression + 5 refresh + 7 retention, no duplicates after re-running.
+    assert jobs == 14
 
 
 def test_retention_follows_env(db_env, monkeypatch):

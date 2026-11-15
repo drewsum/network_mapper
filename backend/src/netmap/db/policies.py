@@ -20,6 +20,8 @@ CAGG_REFRESH = {
     "dns_activity_1m": ("2 days", "1 minute", "1 minute"),
     "dns_activity_1h": ("3 days", "1 hour", "15 minutes"),
     "dns_activity_1d": ("7 days", "1 day", "1 hour"),
+    "flow_activity_1h": ("3 days", "1 hour", "15 minutes"),
+    "flow_activity_1d": ("7 days", "1 day", "1 hour"),
 }
 
 
@@ -34,6 +36,8 @@ def retention_days(settings: Settings) -> dict[str, int]:
         "dns_activity_1m": settings.raw_retention_days,
         "dns_activity_1h": settings.agg_1h_retention_days,
         "dns_activity_1d": settings.agg_1d_retention_days,
+        "flow_activity_1h": settings.agg_1h_retention_days,
+        "flow_activity_1d": settings.agg_1d_retention_days,
     }
 
 

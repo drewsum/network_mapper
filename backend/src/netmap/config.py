@@ -112,6 +112,52 @@ class Settings(BaseSettings):
     # Where pg_dump and pg_restore are; the image installs PostgreSQL 16's.
     pg_bin_dir: str = "/usr/lib/postgresql/16/bin"
 
+    # A device marked critical (a camera, a lock) unheard for this long raises a critical
+    # alert, repeated every critical_remind_hours while it stays down (0: once).
+    critical_grace_minutes: int = Field(default=5, ge=3)
+    critical_remind_hours: float = Field(default=12.0, ge=0)
+
+    # `netmap capture` (the opt-in capture service): flows from a SPAN mirror port with
+    # nfstream, and/or NetFlow v5/v9 and IPFIX from a router. Either unset turns that off.
+    capture_interface: str | None = None
+    netflow_port: int | None = Field(default=None, ge=1, le=65535)
+    netflow_bind: str = "0.0.0.0"
+    # Flows still going are reported this often, so throughput is live within that.
+    capture_report_seconds: int = Field(default=10, ge=5, le=60)
+    # Packet captures of one device (needs capture_interface): where they're kept, their
+    # largest size and length, and how many are kept.
+    captures_dir: str = "/captures"
+    pcap_max_mb: int = Field(default=100, ge=1, le=2000)
+    pcap_max_minutes: int = Field(default=60, ge=1, le=1440)
+    pcap_keep: int = Field(default=10, ge=1)
+
+    # Traffic detections (collector/traffic.py). A device sending more than
+    # upload_heavy_mb in an hour, and at least upload_heavy_ratio times what it received,
+    # is upload-heavy.
+    upload_heavy_mb: int = Field(default=500, ge=1)
+    upload_heavy_ratio: float = Field(default=4.0, ge=1)
+
+    # Fingerbank API key (fingerbank.org, free): names devices from their DHCP fingerprint.
+    fingerbank_api_key: SecretStr | None = None
+
+    # Wi-Fi access points to ask which devices are on which AP, and how strong their
+    # signal is: a UniFi Network controller, and/or OpenWrt APs (comma-separated URLs,
+    # sharing one login, with luci-mod-rpc / ubus over HTTP).
+    unifi_url: str | None = None
+    unifi_username: str | None = None
+    unifi_password: SecretStr | None = None
+    unifi_site: str = "default"
+    unifi_verify_tls: bool = True
+    openwrt_urls: str | None = None
+    openwrt_username: str = "root"
+    openwrt_password: SecretStr | None = None
+    openwrt_verify_tls: bool = True
+    wifi_poll_seconds: float = Field(default=60.0, ge=15)
+
+    # Bearer token Prometheus sends for /metrics. Unset: /metrics needs a login like the
+    # rest of the API (or is open when NETMAP_ADMIN_PASSWORD is unset too).
+    metrics_token: SecretStr | None = None
+
     @field_validator("hostname_precedence")
     @classmethod
     def _known_sources(cls, value: str) -> str:
@@ -122,6 +168,10 @@ class Settings(BaseSettings):
         if unknown:
             raise ValueError(f"unknown sources {sorted(unknown)}; use {', '.join(NAME_SOURCES)}")
         return ",".join(dict.fromkeys(sources))
+
+    @property
+    def openwrt_hosts(self) -> list[str]:
+        return [u.strip() for u in (self.openwrt_urls or "").split(",") if u.strip()]
 
     @property
     def hostname_sources(self) -> list[str]:

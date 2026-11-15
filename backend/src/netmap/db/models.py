@@ -32,7 +32,8 @@ DEVICE_EVENT_KINDS = (
 # can make of one.
 ALERT_KINDS = (
     "new_device", "offline", "port_opened", *BASELINE_EVENT_KINDS, "blocklist_hit",
-    "upnp_forward", "dns_bypass",
+    "upnp_forward", "dns_bypass", "critical_offline", "critical_online", "lateral_traffic",
+    "upload_heavy", "unencrypted",
 )  # fmt: skip
 ALERT_SEVERITIES = ("info", "warning", "critical")
 ALERT_ACTIONS = ("notify", "record", "mute")
@@ -40,6 +41,10 @@ ALERT_ACTIONS = ("notify", "record", "mute")
 NOTIFY_STATES = ("pending", "sent", "duplicate", "failed")
 # Discovery protocols that can name a device (see collector/names.py).
 NAME_SOURCES = ("dhcp", "mdns", "ssdp", "netbios", "rdns")
+# Where a flow came from: the SPAN capture or a router's NetFlow/IPFIX export.
+FLOW_SOURCES = ("nfstream", "netflow")
+CAPTURE_STATES = ("pending", "running", "done", "stopped", "failed")
+WIFI_SOURCES = ("unifi", "openwrt")
 
 
 class Base(DeclarativeBase):
@@ -72,6 +77,13 @@ class Device(Base):
     merged_into: Mapped[str | None] = mapped_column(MACADDR, ForeignKey("devices.mac"))
     # Last port scan (collector/ports.py); null until the first one.
     ports_scanned_at: Mapped[datetime | None] = _ts()
+    # A camera, lock, ...: its going offline raises a critical alert after the grace
+    # period (its own, or NETMAP_CRITICAL_GRACE_MINUTES).
+    critical: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    offline_grace_minutes: Mapped[int | None] = mapped_column(Integer)
+    # Fingerbank's verdict on its DHCP fingerprint (collector/fingerbank.py):
+    # {"device", "parents", "score", "fingerprint", "checked_at"}.
+    fingerbank: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     first_seen: Mapped[datetime] = _ts(server_default=func.now())
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
 
@@ -436,7 +448,10 @@ class DeviceBaseline(Base):
 
 
 class Flow(Base):
-    """Reserved for the stretch SPAN capture (M7). 1-minute buckets. Hypertable on ``time``."""
+    """Traffic from the capture service (netmap/capture): 1-minute buckets per device and
+    remote end. Hypertable on ``time``. ``remote_port`` is the server's port whichever side
+    opened the connection, and ``outbound`` says whether the device did. Traffic between
+    two LAN devices is a row for each, with the other as the remote end."""
 
     __tablename__ = "flows"
     __table_args__ = (Index("ix_flows_mac_time", "mac", "time"),)
@@ -452,3 +467,47 @@ class Flow(Base):
     bytes_up: Mapped[int] = mapped_column(BigInteger, default=0)
     bytes_down: Mapped[int] = mapped_column(BigInteger, default=0)
     packets: Mapped[int] = mapped_column(BigInteger, default=0)
+    outbound: Mapped[bool | None] = mapped_column(Boolean)
+    source: Mapped[str | None] = mapped_column(Text)
+
+
+class PacketCapture(Base):
+    """A packet capture of one device, asked for in the UI and run by the capture service
+    (capture/pcap.py) into a size- and time-bounded ring of files."""
+
+    __tablename__ = "packet_captures"
+    __table_args__ = (_one_of("status", CAPTURE_STATES, "ck_packet_captures_status"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    mac: Mapped[str] = mapped_column(MACADDR, ForeignKey("devices.mac", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(Text, default="pending", server_default="pending")
+    max_seconds: Mapped[int] = mapped_column(Integer)
+    max_bytes: Mapped[int] = mapped_column(BigInteger)
+    bytes: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    packets: Mapped[int | None] = mapped_column(BigInteger)
+    error: Mapped[str | None] = mapped_column(Text)
+    requested_at: Mapped[datetime] = _ts(server_default=func.now())
+    started_at: Mapped[datetime | None] = _ts()
+    ended_at: Mapped[datetime | None] = _ts()
+
+
+class WifiClient(Base):
+    """A device on Wi-Fi, as an access point's controller reports it (collector/wifi.py).
+    Not tied to ``devices``: an AP can report a client before discovery has seen it."""
+
+    __tablename__ = "wifi_clients"
+    __table_args__ = (_one_of("source", WIFI_SOURCES, "ck_wifi_clients_source"),)
+
+    mac: Mapped[str] = mapped_column(MACADDR, primary_key=True)
+    source: Mapped[str] = mapped_column(Text)
+    ap_name: Mapped[str | None] = mapped_column(Text)
+    ap_mac: Mapped[str | None] = mapped_column(MACADDR)
+    ssid: Mapped[str | None] = mapped_column(Text)
+    band: Mapped[str | None] = mapped_column(Text)  # "2.4 GHz", "5 GHz", "6 GHz"
+    channel: Mapped[int | None] = mapped_column(Integer)
+    signal_dbm: Mapped[int | None] = mapped_column(Integer)
+    rx_rate_kbps: Mapped[int | None] = mapped_column(BigInteger)
+    tx_rate_kbps: Mapped[int | None] = mapped_column(BigInteger)
+    connected: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    connected_since: Mapped[datetime | None] = _ts()
+    last_seen: Mapped[datetime] = _ts(server_default=func.now())
