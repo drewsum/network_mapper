@@ -85,7 +85,8 @@ function sankeyOption(data: Flows, c: Colors): echarts.EChartsCoreOption {
         right: 140,
         top: 8,
         bottom: 8,
-        nodeGap: 10,
+        // Wide enough for a label even beside a node too thin to see.
+        nodeGap: 18,
         nodeWidth: 12,
         layoutIterations: 32,
         draggable: false,
@@ -122,7 +123,12 @@ export function FlowsCard({ start }: { start: string }) {
   });
   const data = flows.data;
   const empty = data && data.nodes.length === 0;
-  const height = Math.max(320, Math.min(900, (data?.nodes.filter((n) => n.layer === "organization").length ?? 0) * 34));
+  // Tall enough for the longest column's labels.
+  const tallest = Math.max(
+    0,
+    ...(["device", "organization", "country"] as const).map((l) => data?.nodes.filter((n) => n.layer === l).length ?? 0),
+  );
+  const height = Math.max(320, Math.min(1000, tallest * 40));
   const ref = useChart(empty ? undefined : data, sankeyOption);
   return (
     <section className="card">

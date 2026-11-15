@@ -7,6 +7,9 @@ const apiTarget = process.env.NETMAP_API_PROXY ?? "http://localhost:8000";
 
 export default defineConfig({
   plugins: [react()],
+  // The chart libraries (Cytoscape, ECharts) are lazy chunks of up to ~550 kB, loaded only
+  // by the pages that draw them; the main bundle stays well under this.
+  build: { chunkSizeWarningLimit: 600 },
   server: {
     host: true,
     port: 5173,
