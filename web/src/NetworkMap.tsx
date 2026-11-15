@@ -147,6 +147,7 @@ interface Hover {
   device: MapDevice;
   x: number;
   y: number;
+  width: number; // of the map, to keep the tooltip inside it
 }
 
 export default function NetworkMapPage() {
@@ -188,7 +189,8 @@ export default function NetworkMapPage() {
     instance.on("mouseover", 'node[kind != "group"]', (e) => {
       const mac = e.target.data("mac");
       const p = e.target.renderedPosition();
-      setHover(mac ? { device: byMacRef.current.get(mac)!, x: p.x, y: p.y } : null);
+      const width = box.current?.clientWidth ?? 0;
+      setHover(mac ? { device: byMacRef.current.get(mac)!, x: p.x, y: p.y, width } : null);
       if (box.current) box.current.style.cursor = mac ? "pointer" : "";
     });
     instance.on("mouseout", "node", () => {
@@ -289,7 +291,16 @@ export default function NetworkMapPage() {
       <div className="network-map card">
         <div ref={box} className="cy" role="img" aria-label="Map of devices around the router, grouped by category" />
         {hover?.device && (
-          <div className="tooltip" style={{ left: hover.x + 14, top: hover.y + 14 }}>
+          <div
+            className="tooltip"
+            style={{
+              top: hover.y + 14,
+              // Left of the pointer when there's no room to its right.
+              ...(hover.x + 280 > hover.width
+                ? { right: hover.width - hover.x + 14 }
+                : { left: hover.x + 14 }),
+            }}
+          >
             <div>
               <strong>{deviceName(hover.device)}</strong>
             </div>
