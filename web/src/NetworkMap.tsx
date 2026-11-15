@@ -29,8 +29,17 @@ function layout(devices: MapDevice[], router: string | null): ElementDefinition[
       .filter((d) => d.category === c && d.mac !== router)
       .sort((a, b) => deviceName(a).localeCompare(deviceName(b))),
   })).filter((g) => g.members.length > 0);
-  const widths = groups.map((g) => Math.ceil(Math.sqrt(g.members.length)) * SPACING);
-  const radius = Math.max(260, (widths.reduce((a, b) => a + b, 0) + groups.length * 120) / (2 * Math.PI));
+  // A group's diagonal bounds it at any angle around the hub, so the ring of groups is
+  // sized from those: long enough to fit them all, and far enough out to clear the hub.
+  const diagonals = groups.map((g) => {
+    const cols = Math.ceil(Math.sqrt(g.members.length));
+    return Math.hypot(cols, Math.ceil(g.members.length / cols)) * SPACING;
+  });
+  const radius = Math.max(
+    260,
+    (diagonals.reduce((a, b) => a + b, 0) + groups.length * 40) / (2 * Math.PI),
+    Math.max(0, ...diagonals) / 2 + 120,
+  );
   const hub = devices.find((d) => d.mac === router);
   const elements: ElementDefinition[] = [
     {
