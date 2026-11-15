@@ -9,6 +9,8 @@ import { OrganizationsPage } from "./Organizations";
 
 // Cytoscape is big; load it only when the map is opened.
 const NetworkMapPage = lazy(() => import("./NetworkMap"));
+// So is ECharts, for the Flows page.
+const FlowsPage = lazy(() => import("./Insights"));
 
 const DEVICE_ROUTE = /^#\/devices\/([0-9a-f]{2}(?::[0-9a-f]{2}){5})$/i;
 
@@ -61,6 +63,12 @@ export function App() {
   else if (device) page = <DeviceDetailPage key={device[1]} mac={device[1].toLowerCase()} />;
   else if (hash === "#/domains" || hash === "#/organizations") page = <OrganizationsPage />;
   else if (hash === "#/history") page = <HistoryPage />;
+  else if (hash === "#/flows")
+    page = (
+      <Suspense fallback={<p className="muted">Loading…</p>}>
+        <FlowsPage />
+      </Suspense>
+    );
   else if (hash === "#/map")
     page = (
       <Suspense fallback={<p className="muted">Loading…</p>}>
@@ -78,6 +86,7 @@ export function App() {
           </a>
           {signedIn && <a href="#/map">Map</a>}
           {signedIn && <a href="#/history">History</a>}
+          {signedIn && <a href="#/flows">Flows</a>}
           {signedIn && <a href="#/domains">Domains</a>}
           <span className={health.data?.status === "ok" ? "pill ok" : "pill bad"}>
             {health.isPending ? "checking…" : health.data ? `API ${health.data.version}` : "API down"}

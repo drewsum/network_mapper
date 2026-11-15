@@ -121,3 +121,41 @@ def test_migrate_catches_up_rows_written_into_materialized_spans(client):
         s.commit()
     main(["migrate"])
     assert get(client)["queries"] == before + 1
+
+
+def test_flows_link_devices_to_orgs_to_countries(client):
+    with get_engine().begin() as conn:
+        conn.execute(text("UPDATE devices SET is_iot = true WHERE mac = :m"), {"m": TV})
+    res = client.get("/api/flows")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    nodes = {n["id"]: (n["label"], n["layer"], n["queries"]) for n in body["nodes"]}
+    assert nodes == {  # only the IoT TV; unknown clients never count
+        f"device:{TV}": ("TV", "device", 4),
+        "org:AdCo": ("AdCo", "organization", 3),
+        "org:CDN Inc": ("CDN Inc", "organization", 1),
+        "country:US": ("US", "country", 3),
+        "country:DE": ("DE", "country", 1),
+    }
+    links = {(x["source"], x["target"]): x["queries"] for x in body["links"]}
+    assert links[(f"device:{TV}", "org:AdCo")] == 3
+    assert links[("org:CDN Inc", "country:DE")] == 1
+
+    everyone = client.get("/api/flows", params={"iot_only": "false", "devices": 1}).json()
+    ids = {n["id"] for n in everyone["nodes"]}
+    assert f"device:{TV}" in ids and "device:*" in ids  # the phone is gathered into Other
+    other = next(n for n in everyone["nodes"] if n["id"] == "device:*")
+    assert (other["label"], other["queries"]) == ("Other devices", 1)
+
+
+def test_heatmap_per_day_and_hour(client):
+    res = client.get("/api/heatmap", params={"tz": "America/Chicago"})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert len(body["days"]) in (7, 8)  # the range's dates in Chicago
+    assert sum(c[2] for c in body["cells"]) == 6
+    assert body["max"] == max(c[2] for c in body["cells"])
+    assert all(0 <= c[1] < 24 and 0 <= c[0] < len(body["days"]) for c in body["cells"])
+    tv = client.get("/api/heatmap", params={"mac": TV}).json()
+    assert sum(c[2] for c in tv["cells"]) == 4
+    assert client.get("/api/heatmap", params={"tz": "Mars/Olympus"}).status_code == 422

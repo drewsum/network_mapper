@@ -194,6 +194,31 @@ export interface History {
   rows: HistoryRow[];
 }
 
+export interface FlowNode {
+  id: string;
+  label: string;
+  layer: "device" | "organization" | "country";
+  queries: number;
+}
+
+export interface Flows {
+  start: string;
+  end: string;
+  source: string;
+  iot_only: boolean;
+  nodes: FlowNode[];
+  links: { source: string; target: string; queries: number }[];
+}
+
+export interface Heatmap {
+  start: string;
+  end: string;
+  tz: string;
+  days: string[];
+  cells: [number, number, number][];
+  max: number;
+}
+
 export type DomainSort = "queries" | "last_seen" | "domain";
 
 export interface Organization {
@@ -316,6 +341,10 @@ export const api = {
     get<History>(
       `/api/history?${new URLSearchParams({ start, ...(end ? { end } : {}), by, ...(filters as Record<string, string>) })}`,
     ),
+  flows: (start: string, iotOnly: boolean) =>
+    get<Flows>(`/api/flows?${new URLSearchParams({ start, iot_only: String(iotOnly) })}`),
+  heatmap: (start: string, tz: string, mac?: string) =>
+    get<Heatmap>(`/api/heatmap?${new URLSearchParams({ start, tz, ...(mac ? { mac } : {}) })}`),
   map: (minutes: number) => get<NetworkMap>(`/api/map?minutes=${minutes}`),
   upnpMappings: () => get<UpnpMapping[]>("/api/upnp-mappings"),
   updateDevice: (mac: string, changes: DeviceUpdate) =>

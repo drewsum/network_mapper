@@ -8,6 +8,7 @@ beyond. Ranges start on a bucket boundary, so the timeline and the breakdowns ag
 
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -199,4 +200,183 @@ def history(
         points=points,
         by=by,
         rows=rows,
+    )
+
+
+class FlowNode(BaseModel):
+    id: str  # "device:<mac>", "org:<name>", "country:<code>"; the "*" ones gather the rest
+    label: str
+    layer: Literal["device", "organization", "country"]
+    queries: int
+
+
+class FlowLink(BaseModel):
+    source: str
+    target: str
+    queries: int
+
+
+class Flows(BaseModel):
+    start: datetime
+    end: datetime
+    source: str
+    iot_only: bool
+    nodes: list[FlowNode]
+    links: list[FlowLink]
+
+
+_FLOWS = """
+SELECT a.mac::text, min({label}) AS label,
+       coalesce(d.organization, 'Other') AS org, coalesce(d.country, '') AS country,
+       sum(a.queries)::bigint
+{from_} AND a.mac IS NOT NULL {iot}
+GROUP BY 1, 3, 4
+"""
+
+
+def _top(totals: dict[str, int], n: int) -> set[str]:
+    return {k for k, _ in sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))[:n]}
+
+
+@router.get("/api/flows", response_model=Flows)
+def flows(
+    db: DB,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    iot_only: bool = True,
+    devices: Annotated[int, Query(ge=1, le=50)] = 12,
+    organizations: Annotated[int, Query(ge=1, le=50)] = 12,
+    countries: Annotated[int, Query(ge=1, le=50)] = 8,
+) -> Flows:
+    """Where devices' lookups in [start, end) went, for a Sankey: device -> organization
+    -> country, by lookups. Only IoT devices unless ``iot_only`` is false. The busiest
+    devices, organizations and countries get their own nodes; the rest are gathered
+    into one "Other ..." node per column."""
+    end = (end or datetime.now(UTC)).astimezone(UTC)
+    start = (start or end - DEFAULT_RANGE).astimezone(UTC)
+    if not start < end <= start + MAX_RANGE:
+        raise HTTPException(422, f"start must be before end, at most {MAX_RANGE.days} days")
+    bucket, view = _source(start, end)
+    seconds = int(bucket.total_seconds())
+    first = datetime.fromtimestamp(start.timestamp() // seconds * seconds, UTC)
+    iot = "AND (dv.is_iot OR dv.category = 'iot')" if iot_only else ""
+    sql = _FLOWS.format(
+        label=_DIMENSIONS["device"][1], from_=_FROM.format(view=view, filters=""), iot=iot
+    )
+    rows = db.execute(text(sql), {"first": first, "end": end}).all()
+
+    labels: dict[str, str] = {}
+    per = {"device": {}, "organization": {}, "country": {}}
+    for mac, label, org, country, n in rows:
+        labels[mac] = label
+        for layer, key in (("device", mac), ("organization", org), ("country", country)):
+            per[layer][key] = per[layer].get(key, 0) + n
+    keep = {
+        "device": _top(per["device"], devices),
+        "organization": _top(per["organization"], organizations),
+        "country": _top(per["country"], countries),
+    }
+    prefix = {"device": "device", "organization": "org", "country": "country"}
+    others = {
+        "device": "Other devices",
+        "organization": "Other organizations",
+        "country": "Other countries",
+    }
+
+    def node_id(layer: str, key: str) -> str:
+        return f"{prefix[layer]}:{key if key in keep[layer] else '*'}"
+
+    def node_label(layer: str, key: str) -> str:
+        if key not in keep[layer]:
+            return others[layer]
+        if layer == "device":
+            return labels[key]
+        if layer == "country":
+            return key or "Unknown"
+        return key
+
+    nodes: dict[str, FlowNode] = {}
+    links: dict[tuple[str, str], int] = {}
+    for mac, _, org, country, n in rows:
+        ids = []
+        for layer, key in (("device", mac), ("organization", org), ("country", country)):
+            nid = node_id(layer, key)
+            node = nodes.get(nid) or FlowNode(
+                id=nid, label=node_label(layer, key), layer=layer, queries=0
+            )
+            node.queries += n
+            nodes[nid] = node
+            ids.append(nid)
+        for pair in ((ids[0], ids[1]), (ids[1], ids[2])):
+            links[pair] = links.get(pair, 0) + n
+    return Flows(
+        start=first,
+        end=end,
+        source=view,
+        iot_only=iot_only,
+        nodes=sorted(nodes.values(), key=lambda x: -x.queries),
+        links=[FlowLink(source=s, target=t, queries=n) for (s, t), n in links.items()],
+    )
+
+
+class Heatmap(BaseModel):
+    start: datetime
+    end: datetime
+    tz: str
+    days: list[str]  # ISO dates, oldest first, in ``tz``
+    cells: list[tuple[int, int, int]]  # (day index, hour 0-23, lookups); empty cells left out
+    max: int
+
+
+_HEATMAP = """
+SELECT (a.bucket AT TIME ZONE :tz)::date AS day,
+       extract(hour FROM a.bucket AT TIME ZONE :tz)::int AS hour,
+       sum(a.queries)::bigint
+FROM dns_activity_1h a
+WHERE a.bucket >= :start AND a.bucket < :end {mac}
+GROUP BY 1, 2
+"""
+
+HEATMAP_MAX = timedelta(days=92)
+
+
+@router.get("/api/heatmap", response_model=Heatmap)
+def heatmap(
+    db: DB,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    tz: Annotated[str, Query(max_length=64)] = "UTC",
+    mac: Annotated[str | None, Query(pattern=r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")] = None,
+) -> Heatmap:
+    """Lookups per day and hour of day in [start, end) (default: the last 7 days), from
+    the hourly aggregate, in the viewer's time zone ``tz`` (IANA name). For one device
+    with ``mac``, else the whole network. At most 92 days."""
+    try:
+        zone = ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise HTTPException(422, f"unknown time zone {tz!r}") from exc
+    end = (end or datetime.now(UTC)).astimezone(UTC)
+    start = (start or end - timedelta(days=7)).astimezone(UTC)
+    if not start < end <= start + HEATMAP_MAX:
+        raise HTTPException(422, f"start must be before end, at most {HEATMAP_MAX.days} days")
+    params = {"start": start, "end": end, "tz": tz}
+    where = ""
+    if mac:
+        where, params["mac"] = "AND a.mac = CAST(:mac AS macaddr)", mac.lower()
+    rows = db.execute(text(_HEATMAP.format(mac=where)), params).all()
+
+    first, last = (
+        start.astimezone(zone).date(),
+        (end - timedelta(microseconds=1)).astimezone(zone).date(),
+    )
+    days = [first + timedelta(days=i) for i in range((last - first).days + 1)]
+    index = {d: i for i, d in enumerate(days)}
+    cells = [(index[day], hour, n) for day, hour, n in rows if day in index]
+    return Heatmap(
+        start=start,
+        end=end,
+        tz=tz,
+        days=[d.isoformat() for d in days],
+        cells=sorted(cells),
+        max=max((c[2] for c in cells), default=0),
     )
