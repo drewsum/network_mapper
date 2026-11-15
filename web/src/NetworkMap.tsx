@@ -301,8 +301,8 @@ export default function NetworkMapPage() {
     }
   }, [data, elements, shown, hidden, onlineOnly, narrow, height]);
 
-  /** Phones: the canvas ignores touches (so the page scrolls), and a tap opens the device
-   * under it, found from the tap's position on the map. */
+  /** Phones: cytoscape never sees touches (it would hold any that start on a node, and the
+   * page wouldn't scroll); a tap opens the device under it, found from its position. */
   const tap = (e: React.MouseEvent) => {
     const instance = cy.current;
     if (!narrow || !instance || !box.current) return;
@@ -375,13 +375,12 @@ export default function NetworkMapPage() {
         <span>Size: DNS lookups in the last hour. Updates every 15 seconds; click or tap a device to open it.</span>
       </p>
       {map.error && <p className="error">{map.error.message}</p>}
-      <div className="network-map card">
-        {/* Click handler: phones only, where the canvas itself ignores pointer events. */}
+      {/* The click handler is for phones, where cytoscape is left out of pointer events. */}
+      <div className="network-map card" onClick={tap}>
         <div
           ref={box}
           className={narrow ? "cy static" : "cy"}
           style={height ? { height } : undefined}
-          onClick={tap}
           role="img"
           aria-label="Map of devices around the router, grouped by category"
         />
