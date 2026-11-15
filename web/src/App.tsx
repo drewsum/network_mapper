@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { api, UNAUTHORIZED_EVENT } from "./api";
 import { DeviceDetailPage } from "./DeviceDetail";
 import { DeviceTable } from "./DeviceTable";
 import { Login } from "./Login";
-import { NetworkMapPage } from "./NetworkMap";
 import { OrganizationsPage } from "./Organizations";
+
+// Cytoscape is big; load it only when the map is opened.
+const NetworkMapPage = lazy(() => import("./NetworkMap"));
 
 const DEVICE_ROUTE = /^#\/devices\/([0-9a-f]{2}(?::[0-9a-f]{2}){5})$/i;
 
@@ -57,7 +59,12 @@ export function App() {
   else if (needsLogin) page = <Login />;
   else if (device) page = <DeviceDetailPage key={device[1]} mac={device[1].toLowerCase()} />;
   else if (hash === "#/domains" || hash === "#/organizations") page = <OrganizationsPage />;
-  else if (hash === "#/map") page = <NetworkMapPage />;
+  else if (hash === "#/map")
+    page = (
+      <Suspense fallback={<p className="muted">Loading…</p>}>
+        <NetworkMapPage />
+      </Suspense>
+    );
   else page = <DeviceTable />;
 
   return (

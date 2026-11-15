@@ -11,7 +11,7 @@ const GROUP_LABELS: Record<Category, string> = {
   media: "Media",
   unknown: "Unknown",
 };
-const SPACING = 78; // between devices in a group
+const SPACING = 104; // between devices in a group, wide enough for their labels
 const HUB = "hub";
 const REFRESH_MS = 15_000;
 
@@ -98,7 +98,7 @@ function stylesheet(): cytoscape.StylesheetJson {
         color: fg,
         "text-valign": "bottom",
         "text-margin-y": 4,
-        "text-max-width": "90px",
+        "text-max-width": "92px",
         "text-wrap": "ellipsis",
         "background-color": accent,
         "border-width": 2,
@@ -123,6 +123,8 @@ function stylesheet(): cytoscape.StylesheetJson {
         "text-valign": "top",
         "text-halign": "center",
         "text-margin-y": -4,
+        "text-max-width": "1000px",
+        "text-wrap": "none",
         "font-size": 12,
         color: muted,
       },
@@ -138,7 +140,7 @@ interface Hover {
   y: number;
 }
 
-export function NetworkMapPage() {
+export default function NetworkMapPage() {
   const map = useQuery({ queryKey: ["map"], queryFn: () => api.map(60), refetchInterval: REFRESH_MS });
   const [hidden, setHidden] = useState<Set<Category>>(new Set());
   const [onlineOnly, setOnlineOnly] = useState(false);
