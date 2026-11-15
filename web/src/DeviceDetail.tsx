@@ -528,9 +528,16 @@ function Domains({ mac, start }: { mac: string; start: string }) {
                 <td data-label="Blocked" className={d.blocked ? "blocked" : "muted hide-narrow"}>
                   {d.blocked ? d.blocked.toLocaleString() : "—"}
                 </td>
-                <td title={d.country ? countryName(d.country) : undefined}>{d.country ?? "—"}</td>
-                <td title={network(d.asn, d.asn_org)}>{d.organization ?? "—"}</td>
-                <td>{d.category ? (DOMAIN_CATEGORY_LABELS[d.category] ?? d.category) : "—"}</td>
+                {/* Unknowns read as a bare dash once stacked on a phone; leave them out there. */}
+                <td title={d.country ? countryName(d.country) : undefined} className={d.country ? undefined : "hide-narrow"}>
+                  {d.country ?? "—"}
+                </td>
+                <td title={network(d.asn, d.asn_org)} className={d.organization ? undefined : "hide-narrow"}>
+                  {d.organization ?? "—"}
+                </td>
+                <td className={d.category ? undefined : "hide-narrow"}>
+                  {d.category ? (DOMAIN_CATEGORY_LABELS[d.category] ?? d.category) : "—"}
+                </td>
                 <td data-label="First" title={dateTime(d.first_seen)}>
                   {ago(d.first_seen)}
                 </td>
