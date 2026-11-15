@@ -50,6 +50,9 @@ def client(db_env):
             + [q(PHONE, "phone-only.example", h)],
         )
         s.commit()
+    # TRUNCATE leaves earlier runs' rows in the aggregates; recompute them from this data.
+    with get_engine().connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        refresh_all_aggregates(conn)
     return TestClient(create_app())
 
 
@@ -152,3 +155,50 @@ def test_bad_requests(client):
     assert client.get(f"/api/devices/{TV}/domains", params={"start": too_long}).status_code == 422
     assert client.get(f"/api/devices/{TV}/domains", params={"sort": "nope"}).status_code == 422
     assert client.get("/api/devices/00:aa:00:00:00:99/domains").status_code == 404
+
+
+def test_activity_buckets_fill_the_range(client):
+    end = NOW.replace(second=0) + timedelta(minutes=1)
+    res = client.get(
+        f"/api/devices/{TV}/activity",
+        params={"start": (end - timedelta(hours=1)).isoformat(), "end": end.isoformat()},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["bucket_seconds"] == 60
+    assert len(body["points"]) == 60  # every minute, empty ones as zeros
+    assert sum(p["queries"] for p in body["points"]) == 5
+    assert sum(p["blocked"] for p in body["points"]) == 1
+    assert body["points"][-1]["blocked"] == 1  # the newest query, not materialized yet
+
+    day = client.get(f"/api/devices/{TV}/activity").json()  # default: 24 hours
+    assert day["bucket_seconds"] == 15 * 60
+    assert sum(p["queries"] for p in day["points"]) == 7
+    month = client.get(
+        f"/api/devices/{TV}/activity",
+        params={"start": (NOW - timedelta(days=30)).isoformat()},
+    ).json()
+    assert month["bucket_seconds"] == 86400
+    assert sum(p["queries"] for p in month["points"]) == 9
+
+
+def test_summary_groups_lookups(client):
+    with get_engine().begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO domains (domain, organization, country, category) VALUES "
+                "('ads.example', 'AdCo', 'US', 'ads'), ('cdn.example', 'CDN Inc', 'DE', 'cdn')"
+            )
+        )
+    res = client.get(f"/api/devices/{TV}/summary")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert [(s["key"], s["domains"], s["queries"]) for s in body["organizations"]] == [
+        ("AdCo", 1, 5),
+        ("CDN Inc", 1, 2),
+    ]
+    assert [s["key"] for s in body["countries"]] == ["US", "DE"]
+    assert [s["label"] for s in body["categories"]] == ["Ads & trackers", "CDN & hosting"]
+    assert client.get(f"/api/devices/{PHONE}/summary").json()["organizations"] == [
+        {"key": "", "label": "Not grouped yet", "domains": 1, "queries": 1}
+    ]

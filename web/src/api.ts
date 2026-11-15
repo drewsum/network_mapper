@@ -115,6 +115,34 @@ export interface DeviceDomainPage {
   items: DeviceDomain[];
 }
 
+export interface ActivityPoint {
+  time: string;
+  queries: number;
+  blocked: number;
+}
+
+export interface DeviceActivity {
+  start: string;
+  end: string;
+  bucket_seconds: number;
+  points: ActivityPoint[];
+}
+
+export interface Share {
+  key: string;
+  label: string;
+  domains: number;
+  queries: number;
+}
+
+export interface DeviceSummary {
+  start: string;
+  end: string;
+  organizations: Share[];
+  countries: Share[];
+  categories: Share[];
+}
+
 export type DomainSort = "queries" | "last_seen" | "domain";
 
 export interface Organization {
@@ -228,6 +256,10 @@ export const api = {
     get<DeviceDomainPage>(
       `/api/devices/${mac}/domains?${new URLSearchParams({ start, sort, offset: String(offset), limit: "50" })}`,
     ),
+  activity: (mac: string, start: string) =>
+    get<DeviceActivity>(`/api/devices/${mac}/activity?${new URLSearchParams({ start })}`),
+  summary: (mac: string, start: string) =>
+    get<DeviceSummary>(`/api/devices/${mac}/summary?${new URLSearchParams({ start })}`),
   ports: (mac: string) => get<Port[]>(`/api/devices/${mac}/ports`),
   upnpMappings: () => get<UpnpMapping[]>("/api/upnp-mappings"),
   updateDevice: (mac: string, changes: DeviceUpdate) =>

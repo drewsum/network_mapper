@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
 from sqlalchemy import select, text
 
+from netmap import categories
 from netmap.api.deps import DB, Mac, get_device
 from netmap.config import get_settings
 from netmap.db.models import DomainIP, IpInfo
@@ -99,6 +100,21 @@ def _first_seen(raw_first: datetime | None, day_first: datetime | None) -> datet
     return raw_first
 
 
+def _range(start: datetime | None, end: datetime | None) -> tuple[datetime, datetime]:
+    """[start, end) in UTC; the last 24 hours by default. 422 if it's backwards or too long."""
+    end = (end or datetime.now(UTC)).astimezone(UTC)
+    start = (start or end - DEFAULT_RANGE).astimezone(UTC)
+    if not start < end <= start + MAX_RANGE:
+        raise HTTPException(422, f"start must be before end, at most {MAX_RANGE.days} days")
+    return start, end
+
+
+def _in_raw(start: datetime) -> bool:
+    """Whether raw rows (and the per-minute aggregate) still go back to ``start``."""
+    retention = timedelta(days=get_settings().raw_retention_days)
+    return start >= datetime.now(UTC) - retention
+
+
 @router.get("/api/devices/{mac}/domains", response_model=DeviceDomainPage)
 def device_domains(
     mac: Mac,
@@ -113,13 +129,8 @@ def device_domains(
     and block counts. ``first_seen`` is the device's first query for the domain ever, not
     just in the range: exact for the last NETMAP_RAW_RETENTION_DAYS, to the day before."""
     device = get_device(db, mac)
-    end = (end or datetime.now(UTC)).astimezone(UTC)
-    start = (start or end - DEFAULT_RANGE).astimezone(UTC)
-    if not start < end <= start + MAX_RANGE:
-        raise HTTPException(422, f"start must be before end, at most {MAX_RANGE.days} days")
-
-    retention = timedelta(days=get_settings().raw_retention_days)
-    counts = _COUNTS["raw" if start >= datetime.now(UTC) - retention else "hourly"]
+    start, end = _range(start, end)
+    counts = _COUNTS["raw" if _in_raw(start) else "hourly"]
     params = {"mac": device.mac, "start": start, "end": end, "limit": limit, "offset": offset}
     total, queries, blocked = db.execute(text(_TOTALS.format(counts=counts)), params).one()
     rows = db.execute(text(_PAGE.format(counts=counts, order=ORDER[sort])), params).all()
@@ -218,3 +229,141 @@ def ip_domains(
     return [
         AddressDomain(domain=r.domain, first_seen=r.first_seen, last_seen=r.last_seen) for r in rows
     ]
+
+
+class ActivityPoint(BaseModel):
+    time: datetime  # start of the bucket
+    queries: int
+    blocked: int
+
+
+class DeviceActivity(BaseModel):
+    start: datetime
+    end: datetime
+    bucket_seconds: int
+    points: list[ActivityPoint]  # every bucket in the range, empty ones as zeros
+
+
+# (longest range, bucket), picked so a range has at most a few hundred bars.
+_BUCKETS = [
+    (timedelta(hours=3), timedelta(minutes=1)),
+    (timedelta(days=2), timedelta(minutes=15)),
+    (timedelta(days=14), timedelta(hours=1)),
+    (MAX_RANGE, timedelta(days=1)),
+]
+
+# Lookups per bucket. Raw rows while they're kept: the aggregates miss rows written into
+# a span they've already materialized (Pi-hole's first backfill). Older ranges use the
+# hourly or daily aggregate, so their buckets are at least that long.
+_ACTIVITY_COUNTS = {
+    "raw": """
+        SELECT time_bucket(CAST(:bucket AS interval), time) AS t,
+               count(*) AS queries, count(*) FILTER (WHERE status = 'blocked') AS blocked
+        FROM dns_queries
+        WHERE mac = :mac AND time >= :first AND time < :end
+        GROUP BY 1
+    """,
+    "view": """
+        SELECT time_bucket(CAST(:bucket AS interval), bucket) AS t,
+               sum(queries)::bigint AS queries, sum(blocked)::bigint AS blocked
+        FROM {view}
+        WHERE mac = :mac AND bucket >= :first AND bucket < :end
+        GROUP BY 1
+    """,
+}
+
+_ACTIVITY = """
+WITH counts AS ({counts})
+SELECT s.t, coalesce(c.queries, 0), coalesce(c.blocked, 0)
+FROM generate_series(:first, CAST(:end AS timestamptz) - interval '1 microsecond',
+                     CAST(:bucket AS interval)) AS s(t)
+LEFT JOIN counts c ON c.t = s.t
+ORDER BY s.t
+"""
+
+
+def _bucket(start: datetime, end: datetime) -> tuple[timedelta, str]:
+    """The bucket for a range, and the counts query to fill it from."""
+    bucket = next(b for longest, b in _BUCKETS if end - start <= longest)
+    if _in_raw(start):
+        return bucket, _ACTIVITY_COUNTS["raw"]
+    if bucket < timedelta(days=1):
+        bucket = max(bucket, timedelta(hours=1))
+        return bucket, _ACTIVITY_COUNTS["view"].format(view="dns_activity_1h")
+    return bucket, _ACTIVITY_COUNTS["view"].format(view="dns_activity_1d")
+
+
+@router.get("/api/devices/{mac}/activity", response_model=DeviceActivity)
+def device_activity(
+    mac: Mac, db: DB, start: datetime | None = None, end: datetime | None = None
+) -> DeviceActivity:
+    """DNS lookups over time in [start, end) (default: the last 24 hours): per minute up to
+    3 hours, per 15 minutes up to 2 days, per hour up to 2 weeks, else per day (UTC).
+    The first bucket starts at or before ``start``."""
+    device = get_device(db, mac)
+    start, end = _range(start, end)
+    bucket, counts = _bucket(start, end)
+    seconds = int(bucket.total_seconds())
+    first = datetime.fromtimestamp(start.timestamp() // seconds * seconds, UTC)
+    rows = db.execute(
+        text(_ACTIVITY.format(counts=counts)),
+        {"mac": device.mac, "first": first, "end": end, "bucket": bucket},
+    ).all()
+    return DeviceActivity(
+        start=start,
+        end=end,
+        bucket_seconds=seconds,
+        points=[ActivityPoint(time=t, queries=q, blocked=b) for t, q, b in rows],
+    )
+
+
+class Share(BaseModel):
+    key: str  # organization name, country code or category
+    label: str
+    domains: int
+    queries: int
+
+
+class DeviceSummary(BaseModel):
+    start: datetime
+    end: datetime
+    organizations: list[Share]  # most looked up first
+    countries: list[Share]
+    categories: list[Share]
+
+
+_SHARES = """
+WITH counts AS ({counts})
+SELECT coalesce(d.{column}, '') AS key, count(*) AS domains, sum(c.queries)::bigint AS queries
+FROM counts c LEFT JOIN domains d ON d.domain = c.domain
+GROUP BY 1 ORDER BY queries DESC, key LIMIT :limit
+"""
+
+
+@router.get("/api/devices/{mac}/summary", response_model=DeviceSummary)
+def device_summary(
+    mac: Mac,
+    db: DB,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 8,
+) -> DeviceSummary:
+    """Which organizations, countries and kinds of service a device's lookups in
+    [start, end) went to (default: the last 24 hours), by lookups. Domains not grouped,
+    located or categorized yet have an empty key."""
+    device = get_device(db, mac)
+    start, end = _range(start, end)
+    counts = _COUNTS["raw" if _in_raw(start) else "hourly"]
+    params = {"mac": device.mac, "start": start, "end": end, "limit": limit}
+
+    def shares(column: str, label) -> list[Share]:
+        rows = db.execute(text(_SHARES.format(counts=counts, column=column)), params).all()
+        return [Share(key=k, label=label(k), domains=n, queries=q) for k, n, q in rows]
+
+    return DeviceSummary(
+        start=start,
+        end=end,
+        organizations=shares("organization", lambda k: k or "Not grouped yet"),
+        countries=shares("country", lambda k: k or "Unknown"),
+        categories=shares("category", lambda k: categories.LABELS.get(k, k or "Unknown")),
+    )
