@@ -151,7 +151,8 @@ export function HistoryPage() {
                 Blocked {data.blocked.toLocaleString()}
               </span>
               <span>
-                {data.domains.toLocaleString()} domains, {data.devices.toLocaleString()} devices · per{" "}
+                {data.domains.toLocaleString()} domain{data.domains === 1 ? "" : "s"}, {data.devices.toLocaleString()}{" "}
+                device{data.devices === 1 ? "" : "s"} · per{" "}
                 {bucketName(data.bucket_seconds)}, from the {SOURCES[data.source] ?? data.source} aggregate
               </span>
             </div>
