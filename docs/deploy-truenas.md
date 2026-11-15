@@ -18,6 +18,7 @@ There are two ways to run the stack, both from the same `deploy/portainer-compos
 | `api` | bridge; `NETMAP_API_PUBLISH_PORT` published | API and web UI |
 | `collector` | **host**, `NET_RAW` | LAN discovery, Pi-hole log, port scans, UPnP, downloads |
 | `backup` | bridge | Daily `pg_dump` into `<data dir>/backups` (see [backups.md](backups.md)) |
+| `capture` | **host**, `NET_RAW` | Opt-in (`COMPOSE_PROFILES=capture`): traffic from a SPAN port or NetFlow ([span.md](span.md)) |
 
 ## What it needs from the host
 
@@ -116,6 +117,7 @@ Everything in `.env.example`, plus:
 | `NETMAP_DB_PUBLISH_PORT` | Loopback-only DB port (default 5433); the collector connects through it. |
 | `NETMAP_APP_MEMORY_LIMIT` / `NETMAP_DB_MEMORY_LIMIT` | Memory limits (default `1g` / `2g`). |
 | `NETMAP_IMAGE` | Image name (default `netmap:local`). |
+| `COMPOSE_PROFILES` | `capture` to run the traffic capture service ([span.md](span.md)). |
 
 ## Removing it
 

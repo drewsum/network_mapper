@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     collector_heartbeat_file: str = "/tmp/netmap-collector-heartbeat"
+    capture_heartbeat_file: str = "/tmp/netmap-capture-heartbeat"
     collector_tick_seconds: float = Field(default=10.0, gt=0)
     arp_sweep_interval_seconds: float = Field(default=120.0, ge=10)
     # A device goes offline when nothing has been heard from it for this long.

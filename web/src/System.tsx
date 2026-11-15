@@ -6,9 +6,12 @@ import { ago, dateTime } from "./ui";
 const CHECK_LABELS: Record<string, string> = {
   backup: "Backups",
   blocklists: "Threat blocklists",
+  capture: "Traffic capture",
+  fingerbank: "Fingerbank",
   geoip: "IP locations",
   notifications: "Notifications",
   pihole_client_visibility: "Pi-hole sees devices",
+  wifi: "Wi-Fi access points",
 };
 
 const STATUS_TAGS: Record<HealthCheck["status"], string> = {

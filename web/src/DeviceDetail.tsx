@@ -3,6 +3,7 @@ import { lazy, Suspense, useState } from "react";
 import { ActivityCard, SummaryCards } from "./Activity";
 import { AlertList, RulesTable } from "./Alerts";
 import { BlockButton } from "./Pihole";
+import { CapturesCard, DeviceTrafficCard } from "./Traffic";
 
 // ECharts loads only when a device page is opened.
 const HeatmapCard = lazy(() => import("./Insights").then((m) => ({ default: m.HeatmapCard })));
@@ -66,6 +67,7 @@ export function DeviceDetailPage({ mac }: { mac: string }) {
         <span className="muted small">Activity, top lists and DNS lookups</span>
       </div>
       <ActivityCard mac={d.mac} start={start} />
+      <DeviceTrafficCard mac={d.mac} start={start} />
       <SummaryCards mac={d.mac} start={start} countryName={countryName} />
       <Suspense fallback={null}>
         <HeatmapCard mac={d.mac} />
@@ -74,9 +76,11 @@ export function DeviceDetailPage({ mac }: { mac: string }) {
       <BaselineCard mac={d.mac} />
       <Domains mac={d.mac} start={start} />
       <Names device={d} />
+      <Wifi device={d} />
       <Addresses device={d} />
       <Ports mac={d.mac} />
       <Forwards mac={d.mac} />
+      {!d.merged_into && <CapturesCard mac={d.mac} />}
       <History mac={d.mac} />
       {!d.merged_into && <DeviceAlerts mac={d.mac} />}
       {!d.merged_into && <Merge device={d} />}
@@ -117,11 +121,56 @@ function Header({ device: d }: { device: Detail }) {
               />
               IoT
             </label>
+            <label className="check" title="Alert loudly when it goes offline (cameras, locks, alarms)">
+              <input
+                type="checkbox"
+                checked={d.critical}
+                onChange={(e) => update.mutate({ critical: e.target.checked })}
+              />
+              Critical
+            </label>
           </>
         )}
       </div>
+      {editable && d.critical && <CriticalGrace device={d} />}
       {update.error && <p className="error">{update.error.message}</p>}
     </header>
+  );
+}
+
+/** How long a critical device may go unheard before its alert. */
+function CriticalGrace({ device: d }: { device: Detail }) {
+  const update = useUpdateDevice(d.mac);
+  const [draft, setDraft] = useState<string | null>(null);
+  const current = d.offline_grace_minutes ?? d.critical_grace_default;
+  const value = draft ?? String(current);
+  const save = () => {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 3) return;
+    update.mutate(
+      { offline_grace_minutes: n === d.critical_grace_default ? null : n },
+      { onSuccess: () => setDraft(null) },
+    );
+  };
+  return (
+    <form
+      className="sub inline-field"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save();
+      }}
+    >
+      Critical alert after
+      <input
+        type="number"
+        min={3}
+        value={value}
+        aria-label="Minutes offline before the critical alert"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+      />
+      minutes unheard{d.offline_grace_minutes === null && " (the default)"}
+    </form>
   );
 }
 
@@ -135,6 +184,10 @@ function Facts({ device: d }: { device: Detail }) {
     ["Last seen", `${dateTime(d.last_seen)} (${ago(d.last_seen)})`],
   ];
   if (d.aliases.length) rows.push(["Also seen as", <span className="mono">{d.aliases.join(", ")}</span>]);
+  if (d.fingerbank?.device) {
+    const sure = d.fingerbank.score != null ? ` (${d.fingerbank.score}% sure)` : "";
+    rows.push(["Fingerbank", `${d.fingerbank.device}${sure}`]);
+  }
   return (
     <section className="card">
       <h2>Device</h2>
@@ -221,6 +274,48 @@ function Names({ device: d }: { device: Detail }) {
           ))}
         </tbody>
       </table>
+    </section>
+  );
+}
+
+function signal(dbm: number): string {
+  if (dbm >= -60) return "strong";
+  if (dbm >= -70) return "fair";
+  return "weak";
+}
+
+/** Which access point it's on, from the Wi-Fi controller. */
+function Wifi({ device: d }: { device: Detail }) {
+  const w = d.wifi;
+  if (!w) return null;
+  const radio = [w.band, w.channel != null ? `channel ${w.channel}` : null].filter(Boolean).join(", ");
+  const rows: [string, React.ReactNode][] = [
+    ["Access point", w.ap_name ?? "—"],
+    ["Network", w.ssid ?? "—"],
+    ["Radio", radio || "—"],
+    ["Signal", w.signal_dbm != null ? `${w.signal_dbm} dBm (${signal(w.signal_dbm)})` : "—"],
+  ];
+  if (w.rx_rate_kbps || w.tx_rate_kbps) {
+    const mbit = (k: number | null) => (k ? `${(k / 1000).toFixed(0)} Mbit/s` : "—");
+    rows.push(["Link rate", `${mbit(w.rx_rate_kbps)} down, ${mbit(w.tx_rate_kbps)} up`]);
+  }
+  rows.push(
+    w.connected
+      ? ["Connected", w.connected_since ? `since ${dateTime(w.connected_since)}` : "yes"]
+      : ["Last connected", `${dateTime(w.last_seen)} (${ago(w.last_seen)})`],
+  );
+  return (
+    <section className="card">
+      <h2>Wi-Fi</h2>
+      <dl className="facts">
+        {rows.map(([k, v]) => (
+          <div key={k}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="muted small">From {w.source === "unifi" ? "the UniFi controller" : "OpenWrt"}.</p>
     </section>
   );
 }

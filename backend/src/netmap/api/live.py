@@ -81,12 +81,19 @@ class Listener:
                 self.ready.set()
                 while not self.stopping.is_set():
                     for n in conn.notifies(timeout=1.0):
-                        self.loop.call_soon_threadsafe(self.queue.put_nowait, n.payload)
+                        self._hand_over(n.payload)
         except psycopg.Error as exc:
             self.error = exc
         finally:
             self.ready.set()
-            self.loop.call_soon_threadsafe(self.queue.put_nowait, None)
+            self._hand_over(None)
+
+    def _hand_over(self, payload: str | None) -> None:
+        if self.stopping.is_set() and payload is not None:
+            return
+        # The socket may already be gone, its event loop closed with it.
+        with contextlib.suppress(RuntimeError):
+            self.loop.call_soon_threadsafe(self.queue.put_nowait, payload)
 
     async def start(self) -> None:
         self.thread.start()

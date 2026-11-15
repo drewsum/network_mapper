@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, CATEGORIES, type Category, deviceName, type MapDevice } from "./api";
+import { api, bytes, CATEGORIES, type Category, deviceName, type MapDevice, rate } from "./api";
+import { useLive } from "./live";
 
 const GROUP_LABELS: Record<Category, string> = {
   iot: "IoT",
@@ -17,6 +18,14 @@ const REFRESH_MS = 15_000;
 /** Below this map width, stack the groups in a column (see ``column``). */
 const NARROW = 560;
 const COLUMN_COLS = 3;
+
+/** Line width from throughput (bytes/s), on a log scale: 1 kbit/s is a hairline, 1 Gbit/s
+ * 10 px, so a video stream stands out from a sensor's chatter at a glance. */
+export function edgeWidth(bytesPerSecond: number): number {
+  const bits = bytesPerSecond * 8;
+  if (bits < 1000) return 0;
+  return Math.min(10, 1 + 1.5 * (Math.log10(bits) - 3));
+}
 
 /** Node diameter from lookups in the last hour: idle devices stay small, busy ones grow. */
 function size(queries: number): number {
@@ -97,8 +106,9 @@ function column(devices: MapDevice[], router: string | null): ElementDefinition[
   return elements;
 }
 
-/** Groups around the hub, each a grid of its devices. */
-function layout(devices: MapDevice[], router: string | null): ElementDefinition[] {
+/** Groups around the hub, each a grid of its devices; with traffic capture, a line from the
+ * hub to each device moving data, as wide as its throughput. */
+function layout(devices: MapDevice[], router: string | null, rates: Map<string, number>): ElementDefinition[] {
   const groups = grouped(devices, router);
   // A group's diagonal bounds it at any angle around the hub, so the ring of groups is
   // sized from those: long enough to fit them all, and far enough out to clear the hub.
@@ -130,6 +140,10 @@ function layout(devices: MapDevice[], router: string | null): ElementDefinition[
           y: cy + (Math.floor(j / cols) - (rows - 1) / 2) * SPACING,
         }),
       );
+      const width = edgeWidth(rates.get(d.mac) ?? 0);
+      if (width > 0) {
+        elements.push({ group: "edges", data: { id: `flow-${d.mac}`, source: HUB, target: d.mac, width, kind: "flow" } });
+      }
     });
   });
   return elements;
@@ -186,6 +200,10 @@ function stylesheet(): cytoscape.StylesheetJson {
       },
     },
     { selector: "edge", style: { width: 1, "line-color": line, "curve-style": "straight" } },
+    {
+      selector: 'edge[kind = "flow"]',
+      style: { width: "data(width)", "line-color": accent, opacity: 0.45, "z-index": 0 },
+    },
     { selector: "node:selected", style: { "overlay-opacity": 0 } },
   ];
 }
@@ -209,13 +227,21 @@ export default function NetworkMapPage() {
   const narrow = width > 0 && width < NARROW;
 
   const data = map.data;
+  const live = useLive(!!data?.captured);
+  // Bytes/second per device: live when the capture service reports, else the hour's average.
+  const rates = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const d of data?.devices ?? []) out.set(d.mac, (d.bytes_up + d.bytes_down) / 3600);
+    if (live) for (const [mac, [up, down]] of Object.entries(live.devices)) out.set(mac, up + down);
+    return out;
+  }, [data, live]);
   const shown = useMemo(
     () => (data?.devices ?? []).filter((d) => !hidden.has(d.category) && (!onlineOnly || d.online || d.mac === data?.router)),
     [data, hidden, onlineOnly],
   );
   const elements = useMemo(
-    () => (data ? (narrow ? column : layout)(shown, data.router) : []),
-    [data, shown, narrow],
+    () => (data ? (narrow ? column(shown, data.router) : layout(shown, data.router, rates)) : []),
+    [data, shown, narrow, rates],
   );
   // A phone gets a column as tall as its content needs at (up to) full size, and scrolls
   // the page past it rather than panning inside it.
@@ -231,6 +257,7 @@ export default function NetworkMapPage() {
   useEffect(() => {
     byMacRef.current = byMac;
   }, [byMac]);
+  const liveRate = hover?.device ? live?.devices[hover.device.mac] : undefined;
 
   useEffect(() => {
     if (!box.current) return;
@@ -373,6 +400,12 @@ export default function NetworkMapPage() {
           Pi-hole blocked some lookups
         </span>
         <span>Size: DNS lookups in the last hour. Updates every 15 seconds; click or tap a device to open it.</span>
+        {data?.captured && (
+          <span className="hide-narrow">
+            <span className="swatch flow" />
+            Lines: traffic right now, wider for more (log scale)
+          </span>
+        )}
       </p>
       {map.error && <p className="error">{map.error.message}</p>}
       {/* The click handler is for phones, where cytoscape is left out of pointer events. */}
@@ -403,6 +436,16 @@ export default function NetworkMapPage() {
               {hover.device.queries.toLocaleString()} lookups in the last hour
               {hover.device.blocked ? `, ${hover.device.blocked.toLocaleString()} blocked` : ""}
             </div>
+            {liveRate && (
+              <div>
+                Now: ↑ {rate(liveRate[0])} ↓ {rate(liveRate[1])}
+              </div>
+            )}
+            {data?.captured && (
+              <div className="muted">
+                Last hour: ↑ {bytes(hover.device.bytes_up)} ↓ {bytes(hover.device.bytes_down)}
+              </div>
+            )}
           </div>
         )}
       </div>

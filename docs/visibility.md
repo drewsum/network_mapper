@@ -10,11 +10,12 @@ of view.
 A DNS lookup says a device was about to talk to a service, not how much it sent or
 received. A single lookup can be followed by one tiny request or by an hour of video, and
 apps cache answers and reuse connections, so lookup counts are a rough measure of how
-chatty a device is, not of bandwidth. Every chart and table in netmap counts lookups.
+chatty a device is, not of bandwidth. Without traffic capture, every chart and table in
+netmap counts lookups.
 
-Seeing bytes needs a flow source, such as NetFlow/sFlow/IPFIX from a router that exports
-it, or a mirrored switch port. That is planned for a later version and needs changes to
-the network, so v1 leaves it out.
+Seeing bytes needs a flow source: a mirrored switch port, or NetFlow/IPFIX from a router
+that exports it. Both need changes to the network, so they're optional; see
+[span.md](span.md). With one, netmap also sees devices that skip Pi-hole.
 
 ## Devices that bypass Pi-hole
 

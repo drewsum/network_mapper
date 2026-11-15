@@ -23,7 +23,6 @@ from netmap.db import get_sessionmaker
 log = logging.getLogger(__name__)
 
 CHECK = "capture"
-HEARTBEAT = "/tmp/netmap-capture-heartbeat"
 LAN_REFRESH_SECONDS = 60
 CHECK_SECONDS = 60
 PCAP_TICK_SECONDS = 2
@@ -155,7 +154,7 @@ async def run(settings: Settings) -> None:
             loop.add_signal_handler(sig, stop.set)
 
     capture = Capture(settings)
-    heartbeat = Path(HEARTBEAT)
+    heartbeat = Path(settings.capture_heartbeat_file)
 
     def beat() -> None:
         heartbeat.write_text(str(time.time()))
