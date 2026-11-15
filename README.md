@@ -6,6 +6,8 @@ companion apps' clouds. It runs in Docker and will be deployed on TrueNAS.
 
 **v1 data sources:** Pi-hole's DNS query log and active LAN discovery. No network changes
 are needed. Byte-level traffic (switch port mirroring) is a stretch goal (milestone M7).
+See [what netmap can and can't see](docs/visibility.md): it counts lookups, not bytes,
+and misses devices that bypass Pi-hole.
 
 ## Layout
 

@@ -12,6 +12,43 @@ const NetworkMapPage = lazy(() => import("./NetworkMap"));
 // So is ECharts, for the Flows page.
 const FlowsPage = lazy(() => import("./Insights"));
 
+const DOCS_URL = "https://github.com/drewsum/network_mapper/blob/main/docs/visibility.md";
+const BANNER_KEY = "netmap.limitsBannerDismissed";
+
+/** Per-browser memory of the dismissed banner; storage can be blocked, so never rely on it. */
+function bannerDismissed(): boolean {
+  try {
+    return localStorage.getItem(BANNER_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** What v1 can't see: bytes, and lookups that skip Pi-hole. Dismissible, per browser. */
+function LimitsBanner() {
+  const [dismissed, setDismissed] = useState(bannerDismissed);
+  if (dismissed) return null;
+  const dismiss = () => {
+    try {
+      localStorage.setItem(BANNER_KEY, "1");
+    } catch {
+      // Hidden for this visit only.
+    }
+    setDismissed(true);
+  };
+  return (
+    <div className="notice banner" role="note">
+      <p>
+        netmap counts DNS lookups, not bytes, and it can't see devices that skip Pi-hole (hardcoded
+        or encrypted DNS). <a href={DOCS_URL} target="_blank" rel="noreferrer">What it can and can't see</a>
+      </p>
+      <button type="button" className="plain" onClick={dismiss} aria-label="Dismiss">
+        ✕
+      </button>
+    </div>
+  );
+}
+
 const DEVICE_ROUTE = /^#\/devices\/([0-9a-f]{2}(?::[0-9a-f]{2}){5})$/i;
 
 function useHash(): string {
@@ -112,6 +149,7 @@ export function App() {
               {c.message}
             </p>
           ))}
+      {signedIn && <LimitsBanner />}
       {page}
     </main>
   );
