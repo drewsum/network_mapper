@@ -22,7 +22,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 from sqlalchemy import func, select
 
@@ -96,6 +96,11 @@ def parse_query(raw: dict) -> Query | None:
         return None
 
 
+def _message(body: dict) -> str:
+    error = body.get("error") or {}
+    return " ".join(str(x) for x in (error.get("message"), error.get("hint")) if x)
+
+
 class PiholeError(Exception):
     pass
 
@@ -158,19 +163,44 @@ class PiholeClient:
                 self._call("DELETE", "/api/auth")
             self._sid = None
 
-    def get(self, path: str, params: dict) -> dict:
-        """GET with the session, logging in first or again after it expires."""
+    def request(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
+        """A call with the session, logging in first or again after it expires."""
         if self._sid is None:
             self.login()
-        full = f"{path}?{urlencode(params)}"
-        status, body = self._call("GET", full)
+        status, answer = self._call(method, path, body)
         if status == 401:
             self.login()
-            status, body = self._call("GET", full)
+            status, answer = self._call(method, path, body)
+        return status, answer
+
+    def get(self, path: str, params: dict) -> dict:
+        status, body = self.request("GET", f"{path}?{urlencode(params)}")
         if status != 200:
-            message = (body.get("error") or {}).get("message", "")
-            raise PiholeError(f"GET {path}: HTTP {status} {message}".strip())
+            raise PiholeError(f"GET {path}: HTTP {status} {_message(body)}".strip())
         return body
+
+    def lookup(self, domain: str) -> dict:
+        """Where ``domain`` stands in Pi-hole's lists: {"domains": [allow/deny entries
+        matching it], "gravity": [subscribed lists that have it]}."""
+        body = self.get(f"/api/search/{quote(domain, safe='')}", {"partial": "false", "N": 20})
+        return body.get("search") or {}
+
+    def deny(self, domain: str, comment: str) -> None:
+        """Add ``domain`` to Pi-hole's exact deny list (for the default group)."""
+        status, body = self.request(
+            "POST", "/api/domains/deny/exact", {"domain": domain, "comment": comment}
+        )
+        errors = (body.get("processed") or {}).get("errors") or []
+        if status not in (200, 201) or errors:
+            message = _message(body) or "; ".join(str(e.get("error")) for e in errors)
+            raise PiholeError(f"Pi-hole didn't block {domain} (HTTP {status}): {message}")
+
+    def undeny(self, domain: str) -> None:
+        """Take ``domain`` off Pi-hole's exact deny list."""
+        path = f"/api/domains/deny/exact/{quote(domain, safe='')}"
+        status, body = self.request("DELETE", path)
+        if status not in (200, 204, 404):
+            raise PiholeError(f"Pi-hole didn't unblock {domain} (HTTP {status}): {_message(body)}")
 
     def queries_since(self, since: datetime, until: datetime, after_id: int) -> list[Query]:
         """Queries in [since, until] with an ID above ``after_id``, oldest first."""

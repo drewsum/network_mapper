@@ -28,6 +28,16 @@ DEVICE_EVENT_KINDS = (
     "new_device", "online", "offline", "new_ip", "port_opened", "port_closed",
     *BASELINE_EVENT_KINDS,
 )  # fmt: skip
+# What the alert engine raises (collector/alerts.py), how loud each is, and what a rule
+# can make of one.
+ALERT_KINDS = (
+    "new_device", "offline", "port_opened", *BASELINE_EVENT_KINDS, "blocklist_hit",
+    "upnp_forward", "dns_bypass",
+)  # fmt: skip
+ALERT_SEVERITIES = ("info", "warning", "critical")
+ALERT_ACTIONS = ("notify", "record", "mute")
+# An alert's notification: waiting to go out, sent, skipped as a repeat, or given up on.
+NOTIFY_STATES = ("pending", "sent", "duplicate", "failed")
 # Discovery protocols that can name a device (see collector/names.py).
 NAME_SOURCES = ("dhcp", "mdns", "ssdp", "netbios", "rdns")
 
@@ -339,9 +349,23 @@ class UpnpMapping(Base):
     last_seen: Mapped[datetime] = _ts(server_default=func.now())
 
 
+def _one_of(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
+    return CheckConstraint(f"{column} IN (" + ", ".join(f"'{v}'" for v in values) + ")", name=name)
+
+
 class Alert(Base):
+    """Something worth knowing about, raised by the alert engine (collector/alerts.py)."""
+
     __tablename__ = "alerts"
-    __table_args__ = (Index("ix_alerts_time", "time"),)
+    __table_args__ = (
+        _one_of("kind", ALERT_KINDS, "ck_alerts_kind"),
+        _one_of("severity", ALERT_SEVERITIES, "ck_alerts_severity"),
+        _one_of("notify", NOTIFY_STATES, "ck_alerts_notify"),
+        Index("ix_alerts_time", "time"),
+        Index("ix_alerts_dedup_key_time", "dedup_key", "time"),
+        Index("ix_alerts_pending", "time", postgresql_where=text("notify = 'pending'")),
+        Index("ix_alerts_open", "time", postgresql_where=text("acknowledged_at IS NULL")),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     time: Mapped[datetime] = _ts(server_default=func.now())
@@ -350,7 +374,41 @@ class Alert(Base):
     severity: Mapped[str] = mapped_column(Text, default="info", server_default="info")
     message: Mapped[str] = mapped_column(Text)
     details: Mapped[dict | None] = mapped_column(JSONB)
-    acknowledged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # The same thing happening again: repeats inside a window are skipped or not notified.
+    dedup_key: Mapped[str] = mapped_column(Text)
+    acknowledged_at: Mapped[datetime | None] = _ts()
+    # Null when its rule said record only.
+    notify: Mapped[str | None] = mapped_column(Text)
+    notified_at: Mapped[datetime | None] = _ts()
+
+
+class AlertRule(Base):
+    """What to do with an alert kind: notify, record only, or mute. ``mac`` null applies to
+    every device and ``kind`` null to every kind; the most specific rule wins. A rule with
+    ``until`` (a snooze) lapses then."""
+
+    __tablename__ = "alert_rules"
+    __table_args__ = (
+        _one_of("kind", ALERT_KINDS, "ck_alert_rules_kind"),
+        _one_of("action", ALERT_ACTIONS, "ck_alert_rules_action"),
+        UniqueConstraint("mac", "kind", name="uq_alert_rules", postgresql_nulls_not_distinct=True),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    mac: Mapped[str | None] = mapped_column(MACADDR, ForeignKey("devices.mac", ondelete="CASCADE"))
+    kind: Mapped[str | None] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(Text)
+    until: Mapped[datetime | None] = _ts()
+    created_at: Mapped[datetime] = _ts(server_default=func.now())
+
+
+class CollectorCursor(Base):
+    """How far a collector job has read another table, by ID."""
+
+    __tablename__ = "collector_cursors"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[int] = mapped_column(BigInteger)
 
 
 class DeviceBaseline(Base):

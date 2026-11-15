@@ -5,6 +5,7 @@ import signal
 import time
 from pathlib import Path
 
+from netmap.collector.alerts import AlertSource
 from netmap.collector.arp import ArpSource
 from netmap.collector.base import Source
 from netmap.collector.baseline import BaselineSource
@@ -32,6 +33,7 @@ SOURCE_TYPES: list[type[Source]] = [
     OrganizationSource,
     CategorySource,
     BaselineSource,
+    AlertSource,
 ]
 
 

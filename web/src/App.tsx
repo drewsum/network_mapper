@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { AlertsPage } from "./Alerts";
 import { api, UNAUTHORIZED_EVENT } from "./api";
 import { DeviceDetailPage } from "./DeviceDetail";
 import { DeviceTable } from "./DeviceTable";
@@ -56,6 +57,7 @@ const NAV = [
   ["#/flows", "Flows"],
   ["#/domains", "Domains"],
   ["#/report", "IoT report"],
+  ["#/alerts", "Alerts"],
 ];
 
 const DEVICE_ROUTE = /^#\/devices\/([0-9a-f]{2}(?::[0-9a-f]{2}){5})$/i;
@@ -93,6 +95,12 @@ export function App() {
     enabled: signedIn,
     refetchInterval: 5 * 60_000,
   });
+  const alerts = useQuery({
+    queryKey: ["alertSummary"],
+    queryFn: api.alertSummary,
+    enabled: signedIn,
+    refetchInterval: 60_000,
+  });
 
   // Any 401 (an expired session, or a password change) means: show the login page.
   useEffect(() => {
@@ -110,6 +118,7 @@ export function App() {
   else if (hash === "#/domains" || hash === "#/organizations") page = <OrganizationsPage />;
   else if (hash === "#/history") page = <HistoryPage />;
   else if (hash === "#/report") page = <ReportPage />;
+  else if (hash === "#/alerts") page = <AlertsPage />;
   else if (hash === "#/flows")
     page = (
       <Suspense fallback={<p className="muted">Loading…</p>}>
@@ -135,6 +144,11 @@ export function App() {
             {NAV.map(([href, label]) => (
               <a key={href} href={href} aria-current={hash === href ? "page" : undefined}>
                 {label}
+                {href === "#/alerts" && !!alerts.data?.open && (
+                  <span className={alerts.data.critical ? "badge bad" : "badge"} aria-label={`${alerts.data.open} open`}>
+                    {alerts.data.open}
+                  </span>
+                )}
               </a>
             ))}
           </nav>
