@@ -39,6 +39,24 @@ export interface Device {
   ip: string | null;
 }
 
+export interface MapDevice {
+  mac: string;
+  label: string | null;
+  hostname: string | null;
+  vendor: string | null;
+  category: Category;
+  online: boolean;
+  ip: string | null;
+  queries: number;
+  blocked: number;
+}
+
+export interface NetworkMap {
+  since: string;
+  router: string | null;
+  devices: MapDevice[];
+}
+
 export interface DeviceIP {
   ip: string;
   first_seen: string;
@@ -261,6 +279,7 @@ export const api = {
   summary: (mac: string, start: string) =>
     get<DeviceSummary>(`/api/devices/${mac}/summary?${new URLSearchParams({ start })}`),
   ports: (mac: string) => get<Port[]>(`/api/devices/${mac}/ports`),
+  map: (minutes: number) => get<NetworkMap>(`/api/map?minutes=${minutes}`),
   upnpMappings: () => get<UpnpMapping[]>("/api/upnp-mappings"),
   updateDevice: (mac: string, changes: DeviceUpdate) =>
     request<DeviceDetail>("PATCH", `/api/devices/${mac}`, changes),

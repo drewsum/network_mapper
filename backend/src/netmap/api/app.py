@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from netmap import __version__
-from netmap.api import auth, categories, dns, orgs
+from netmap.api import auth, categories, dns, network, orgs
 from netmap.api.deps import DB, MAC_PATTERN, Mac, get_device
 from netmap.collector.inventory import known_addresses, merge_devices
 from netmap.config import get_settings
@@ -364,6 +364,7 @@ def create_app() -> FastAPI:
     app.include_router(dns.router)
     app.include_router(orgs.router)
     app.include_router(categories.router)
+    app.include_router(network.router)
     _mount_spa(app, settings.web_dist_dir)
     return app
 
