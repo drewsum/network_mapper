@@ -219,3 +219,13 @@ td.blocked { color: var(--bad); }
   background: var(--chart-allowed); opacity: 0.8; min-width: 2px;
 }
 .breakdown .open { margin-left: 8px; font-size: 12px; }
+
+/* Flows: Sankey column swatches, the same values as the chart (Insights.tsx). */
+.swatch.layer-device { background: #2a78d6; }
+.swatch.layer-org { background: #1baf7a; }
+.swatch.layer-country { background: #eb6834; }
+@media (prefers-color-scheme: dark) {
+  .swatch.layer-device { background: #3987e5; }
+  .swatch.layer-org { background: #199e70; }
+  .swatch.layer-country { background: #d95926; }
+}

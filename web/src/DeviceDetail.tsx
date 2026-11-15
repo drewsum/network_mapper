@@ -1,6 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { ActivityCard, SummaryCards } from "./Activity";
+
+// ECharts loads only when a device page is opened.
+const HeatmapCard = lazy(() => import("./Insights").then((m) => ({ default: m.HeatmapCard })));
 import {
   api,
   type DeviceDetail as Detail,
@@ -62,6 +65,9 @@ export function DeviceDetailPage({ mac }: { mac: string }) {
       </div>
       <ActivityCard mac={d.mac} start={start} />
       <SummaryCards mac={d.mac} start={start} countryName={countryName} />
+      <Suspense fallback={null}>
+        <HeatmapCard mac={d.mac} />
+      </Suspense>
       <Domains mac={d.mac} start={start} />
       <Names device={d} />
       <Addresses device={d} />
