@@ -33,6 +33,8 @@ class FakePihole:
         self.log: list[dict] = []  # dnsmasq log lines; a line's ID is its index
         self.pid = 1
         self.lock = threading.Lock()
+        self.denied: set[str] = set()  # exact deny list
+        self.gravity: dict[str, str] = {}  # domain -> list address
 
     def add(self, qid, at, domain, client="192.0.2.44", status="FORWARDED", qtype="A"):
         self.queries.append(
@@ -60,6 +62,11 @@ class FakePihole:
                 if fake.v5:
                     return self._v5()
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if self.path == "/api/domains/deny/exact":
+                    if self.headers.get("X-FTL-SID") not in fake.sids:
+                        return self._send(401, {"error": {"key": "unauthorized"}})
+                    fake.denied.add(body["domain"])
+                    return self._send(201, {"domains": [], "processed": {"errors": []}})
                 if body.get("password") != PASSWORD:
                     return self._send(
                         401, {"session": {"valid": False, "message": "password incorrect"}}
@@ -71,6 +78,9 @@ class FakePihole:
                 self._send(200, {"session": {"valid": True, "sid": sid, "validity": 1800}})
 
             def do_DELETE(self):
+                if self.path.startswith("/api/domains/deny/exact/"):
+                    fake.denied.discard(self.path.rsplit("/", 1)[1])
+                    return self._send(204, b"")
                 fake.sids.discard(self.headers.get("X-FTL-SID"))
                 self._send(204, b"")
 
@@ -80,6 +90,26 @@ class FakePihole:
                 if self.headers.get("X-FTL-SID") not in fake.sids:
                     return self._send(401, {"error": {"key": "unauthorized", "message": "x"}})
                 q = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
+                if urlsplit(self.path).path.startswith("/api/search/"):
+                    domain = urlsplit(self.path).path.rsplit("/", 1)[1]
+                    entries = (
+                        [{"domain": domain, "type": "deny", "kind": "exact", "enabled": True}]
+                        if domain in fake.denied
+                        else []
+                    )
+                    lists = (
+                        [
+                            {
+                                "domain": domain,
+                                "address": fake.gravity[domain],
+                                "type": "block",
+                                "enabled": True,
+                            }
+                        ]
+                        if domain in fake.gravity
+                        else []
+                    )
+                    return self._send(200, {"search": {"domains": entries, "gravity": lists}})
                 if urlsplit(self.path).path == "/api/logs/dnsmasq":
                     start = int(q["nextID"])
                     return self._send(
@@ -276,3 +306,38 @@ def test_answers_build_the_domain_ip_map(db, fake):
     recent = client.get("/api/domains/www.shop.example/ips", params={"start": since}).json()
     assert [r["ip"] for r in recent] == ["203.0.113.2"]
     assert client.get("/api/ips/not-an-ip/domains").status_code == 422
+
+
+def test_block_and_unblock_a_domain_from_the_ui(fake, db_env, monkeypatch):
+    monkeypatch.setenv("NETMAP_PIHOLE_URL", fake.url)
+    monkeypatch.setenv("NETMAP_PIHOLE_PASSWORD", PASSWORD)
+    get_settings.cache_clear()
+    main(["migrate"])
+    client = TestClient(create_app())
+    fake.gravity["ads.example"] = "https://lists.example/hosts"
+    ads = client.get("/api/pihole/domains/ads.example").json()
+    assert (ads["blocked"], ads["denied"], ads["lists"]) == (
+        True,
+        False,
+        ["https://lists.example/hosts"],
+    )
+
+    state = client.get("/api/pihole/domains/Tracker.Example").json()
+    assert (state["domain"], state["blocked"], state["denied"]) == ("tracker.example", False, False)
+    blocked = client.put("/api/pihole/deny/tracker.example").json()
+    assert (blocked["blocked"], blocked["denied"]) == (True, True)
+    assert fake.denied == {"tracker.example"}
+    client.put("/api/pihole/deny/tracker.example")  # already there: left alone
+    unblocked = client.delete("/api/pihole/deny/tracker.example").json()
+    assert (unblocked["blocked"], unblocked["denied"]) == (False, False)
+    assert fake.denied == set()
+    # Every request logged out again.
+    assert fake.sids == set()
+    assert client.get("/api/pihole/domains/not a domain").status_code == 422
+
+
+def test_blocking_needs_pihole_settings(db_env):
+    main(["migrate"])
+    client = TestClient(create_app())
+    assert client.get("/api/pihole/domains/a.example").json()["configured"] is False
+    assert client.put("/api/pihole/deny/a.example").status_code == 400

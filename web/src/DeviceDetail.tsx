@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useState } from "react";
 import { ActivityCard, SummaryCards } from "./Activity";
+import { AlertList, RulesTable } from "./Alerts";
+import { BlockButton } from "./Pihole";
 
 // ECharts loads only when a device page is opened.
 const HeatmapCard = lazy(() => import("./Insights").then((m) => ({ default: m.HeatmapCard })));
@@ -68,6 +70,7 @@ export function DeviceDetailPage({ mac }: { mac: string }) {
       <Suspense fallback={null}>
         <HeatmapCard mac={d.mac} />
       </Suspense>
+      <DnsCheckCard mac={d.mac} />
       <BaselineCard mac={d.mac} />
       <Domains mac={d.mac} start={start} />
       <Names device={d} />
@@ -75,6 +78,7 @@ export function DeviceDetailPage({ mac }: { mac: string }) {
       <Ports mac={d.mac} />
       <Forwards mac={d.mac} />
       <History mac={d.mac} />
+      {!d.merged_into && <DeviceAlerts mac={d.mac} />}
       {!d.merged_into && <Merge device={d} />}
     </article>
   );
@@ -411,6 +415,59 @@ function BaselineCard({ mac }: { mac: string }) {
   );
 }
 
+/** For IoT devices: does it look things up through Pi-hole at all, or might it use its own DNS server? */
+function DnsCheckCard({ mac }: { mac: string }) {
+  const check = useQuery({ queryKey: ["dnsCheck", mac], queryFn: () => api.dnsCheck(mac) });
+  const c = check.data;
+  if (!c?.applies) return null;
+  const span = `${c.hours} hours`;
+  let text;
+  if (c.status === "silent")
+    text = (
+      <p className="warning">
+        Online for {span} with only {plural(c.lookups ?? 0, "DNS lookup", "DNS lookups")} through Pi-hole (fewer
+        than {c.min_lookups}). It probably uses its own DNS server (like Google's) or encrypted DNS, so netmap can't see
+        where it goes. Blocking outbound DNS (port 53) on your router, except to Pi-hole, would force it through.
+      </p>
+    );
+  else if (c.status === "ok")
+    text = (
+      <p className="muted">
+        {plural(c.lookups ?? 0, "lookup", "lookups")} through Pi-hole in the last {span}: it uses Pi-hole.
+      </p>
+    );
+  else if (c.status === "too_soon")
+    text = <p className="muted">Online since {dateTime(c.online_since!)}; it's judged after {span} online.</p>;
+  else if (c.status === "offline") text = <p className="muted">Offline; checked while it's online.</p>;
+  else text = <p className="muted">Can't tell right now: {c.reason}</p>;
+  return (
+    <section className="card">
+      <h2>DNS through Pi-hole</h2>
+      {text}
+    </section>
+  );
+}
+
+/** This device's alerts, and its own alert rules. */
+function DeviceAlerts({ mac }: { mac: string }) {
+  const [rules, setRules] = useState(false);
+  return (
+    <>
+      <AlertList mac={mac} />
+      <section className="card">
+        <h2>Alert rules for this device</h2>
+        {rules ? (
+          <RulesTable mac={mac} />
+        ) : (
+          <button type="button" onClick={() => setRules(true)}>
+            Show rules
+          </button>
+        )}
+      </section>
+    </>
+  );
+}
+
 function History({ mac }: { mac: string }) {
   const events = useInfiniteQuery({
     queryKey: ["events", mac],
@@ -587,6 +644,9 @@ function Domains({ mac, start }: { mac: string; start: string }) {
               <th>Category</th>
               <th>First seen</th>
               <th>Last</th>
+              <th>
+                <span className="visually-hidden">Pi-hole</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -616,6 +676,9 @@ function Domains({ mac, start }: { mac: string; start: string }) {
                 </td>
                 <td data-label="Last" title={dateTime(d.last_seen)}>
                   {ago(d.last_seen)}
+                </td>
+                <td>
+                  <BlockButton domain={d.domain} />
                 </td>
               </tr>
             ))}

@@ -427,6 +427,12 @@ _MERGE_SQL = [
     "UPDATE dns_queries SET mac = :target WHERE mac = :source",
     "UPDATE upnp_mappings SET mac = :target WHERE mac = :source",
     "UPDATE alerts SET mac = :target WHERE mac = :source",
+    """
+    INSERT INTO alert_rules (mac, kind, action, until, created_at)
+    SELECT :target, kind, action, until, created_at FROM alert_rules WHERE mac = :source
+    ON CONFLICT DO NOTHING
+    """,
+    "DELETE FROM alert_rules WHERE mac = :source",
     # Earlier aliases of the source now point straight at the target: one hop, always.
     "UPDATE devices SET merged_into = :target WHERE merged_into = :source",
     """

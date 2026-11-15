@@ -5,6 +5,7 @@ description = "Home network mapper: device inventory and IoT DNS activity histor
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.14",
+    "apprise>=1.9",
     "fastapi>=0.115",
     "maxminddb>=2.6",
     "psycopg[binary]>=3.2",

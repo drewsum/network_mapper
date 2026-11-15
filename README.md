@@ -134,6 +134,60 @@ telemetry, threats, or other third parties. Mark a site expected or unexpected f
 and the report remembers it. Lookups between midnight and 6 am in your time zone are counted
 separately. "Download CSV" exports the report as shown.
 
+## Alerts and notifications
+
+The collector raises alerts every minute for:
+- new devices;
+- devices going offline;
+- newly opened ports;
+- the baseline departures above (new sites, organizations, countries, networks, lookup spikes);
+- lookups of threat-listed domains (at most once a day per device and domain);
+- new UPnP port forwards on the router;
+- IoT devices that may skip Pi-hole (below).
+
+Each kind does one of three things by default:
+- **Notify:** threats, new devices, countries, spikes, forwards and Pi-hole bypass.
+- **Record only:** offline, ports, sites and organizations. Offline is muted for phones and
+  computers.
+- **Mute:** new networks.
+
+The Alerts page changes this for every device. A device's page changes it for just that
+device, and the most specific rule wins. Alerts can be acknowledged, and an alert's "Mute
+for this device" snoozes its kind for a day, a week or for good. History from before the
+alert engine first ran raises nothing.
+
+Notifications go out through [Apprise](https://github.com/caronc/apprise/wiki): set
+`NETMAP_APPRISE_URLS` to one or more URLs, for example `ntfy://my-topic`, a `discord://`
+webhook, or `mailtos://`. Separate several with spaces or commas. Delivery works like this:
+- Each minute's alerts go out as one message.
+- An alert that repeats one sent within the hour is skipped.
+- At most `NETMAP_NOTIFY_MAX_PER_HOUR` (10) messages go out an hour; alerts past that wait
+  and go out together.
+- A failed send is retried, and given up after a day.
+
+The Alerts page has a test button. `NETMAP_PUBLIC_URL` adds a link back to the app to each
+message.
+
+### Devices that skip Pi-hole
+
+An IoT device that's been online for `NETMAP_DNS_BYPASS_HOURS` (24) with fewer than
+`NETMAP_DNS_BYPASS_MIN_LOOKUPS` (10) DNS lookups through Pi-hole probably has its own DNS
+server built in, or uses encrypted DNS. Its page says so, and it raises an alert. The check
+stays quiet in three cases, since there's nothing to compare against:
+- Pi-hole isn't set up;
+- Pi-hole has sent nothing in the last hour;
+- Pi-hole sees every query as coming from the router.
+
+Setting the lookups to 0 turns the check off.
+
+### Blocking a domain in Pi-hole
+
+"Block…" next to a domain on a device's page, or on a threat alert, opens a confirmation.
+It first shows where the domain stands in Pi-hole (deny list, allow list, subscribed
+blocklists). Confirming adds it to Pi-hole's exact deny list, for every device, and it can be
+unblocked the same way. This uses the same `NETMAP_PIHOLE_PASSWORD` app password, so Pi-hole
+must allow it to change lists.
+
 ## Images and CI
 
 There's no CI. Images are built on the machine that runs them (`docker compose up -d --build`):

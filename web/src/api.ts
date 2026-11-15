@@ -133,6 +133,90 @@ export interface Baseline {
   departures: Pick<DeviceEvent, "time" | "kind" | "details">[];
 }
 
+export type AlertKind =
+  | "new_device"
+  | "offline"
+  | "port_opened"
+  | DepartureKind
+  | "blocklist_hit"
+  | "upnp_forward"
+  | "dns_bypass";
+export type AlertAction = "notify" | "record" | "mute";
+export type Severity = "info" | "warning" | "critical";
+
+export interface Alert {
+  id: number;
+  time: string;
+  mac: string | null;
+  device: string | null;
+  kind: AlertKind;
+  severity: Severity;
+  message: string;
+  /** blocklist_hit: {domain, lookups, blocklists}; others vary by kind. */
+  details: { domain?: string } & Record<string, unknown>;
+  acknowledged_at: string | null;
+  notify: "pending" | "sent" | "duplicate" | "failed" | null;
+  notified_at: string | null;
+}
+
+export interface AlertPage {
+  open: number;
+  items: Alert[];
+}
+
+export interface AlertKindInfo {
+  kind: AlertKind;
+  label: string;
+  severity: Severity;
+  default_action: AlertAction;
+  note: string | null;
+}
+
+export interface AlertRule {
+  id: number;
+  mac: string | null;
+  kind: AlertKind | null;
+  action: AlertAction;
+  until: string | null;
+  created_at: string;
+}
+
+export interface AlertRules {
+  kinds: AlertKindInfo[];
+  rules: AlertRule[];
+}
+
+export interface Notifications {
+  configured: boolean;
+  services: number;
+  max_per_hour: number;
+  link: boolean;
+  pending: number;
+  last_sent: string | null;
+  problem: string | null;
+}
+
+export interface DnsCheck {
+  applies: boolean;
+  status: "ok" | "silent" | "too_soon" | "offline" | "unknown" | "not_iot";
+  reason: string | null;
+  hours: number;
+  min_lookups: number;
+  lookups: number | null;
+  online_since: string | null;
+}
+
+export interface PiholeState {
+  configured: boolean;
+  domain: string;
+  denied: boolean;
+  deny_rules: string[];
+  allowed: boolean;
+  lists: string[];
+  blocked: boolean;
+  last_blocked: boolean | null;
+}
+
 export interface Port {
   port: number;
   protocol: string;
@@ -358,6 +442,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       .catch(() => "");
     throw new Error(detail || `${method} ${path}: ${res.status}`);
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -393,6 +478,25 @@ export const api = {
     request<{ expected: boolean | null }>("PUT", `/api/devices/${mac}/sites/${encodeURIComponent(site)}/expected`, {
       expected,
     }),
+  alerts: (state: "open" | "all", mac?: string, before?: number) =>
+    get<AlertPage>(
+      `/api/alerts?${new URLSearchParams({ state, limit: "50", ...(mac ? { mac } : {}), ...(before ? { before: String(before) } : {}) })}`,
+    ),
+  alertSummary: () => get<{ open: number; critical: number }>("/api/alerts/summary"),
+  acknowledge: (id: number, acknowledged: boolean) =>
+    request<Alert>("PATCH", `/api/alerts/${id}`, { acknowledged }),
+  acknowledgeAll: (mac?: string) =>
+    request<{ acknowledged: number }>("POST", "/api/alerts/acknowledge", { mac: mac ?? null }),
+  alertRules: (mac?: string) => get<AlertRules>(`/api/alert-rules${mac ? `?mac=${mac}` : ""}`),
+  saveAlertRule: (rule: Pick<AlertRule, "mac" | "kind" | "action" | "until">) =>
+    request<AlertRule>("PUT", "/api/alert-rules", rule),
+  deleteAlertRule: (id: number) => request<void>("DELETE", `/api/alert-rules/${id}`),
+  notifications: () => get<Notifications>("/api/notifications"),
+  testNotification: () => request<{ sent: boolean; message: string }>("POST", "/api/notifications/test"),
+  dnsCheck: (mac: string) => get<DnsCheck>(`/api/devices/${mac}/dns-check`),
+  piholeState: (domain: string) => get<PiholeState>(`/api/pihole/domains/${encodeURIComponent(domain)}`),
+  block: (domain: string) => request<PiholeState>("PUT", `/api/pihole/deny/${encodeURIComponent(domain)}`),
+  unblock: (domain: string) => request<PiholeState>("DELETE", `/api/pihole/deny/${encodeURIComponent(domain)}`),
   history: (start: string, end: string | undefined, by: HistoryDimension, filters: HistoryFilters) =>
     get<History>(
       `/api/history?${new URLSearchParams({ start, ...(end ? { end } : {}), by, ...(filters as Record<string, string>) })}`,

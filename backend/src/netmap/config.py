@@ -86,6 +86,18 @@ class Settings(BaseSettings):
     # Days after a device's first DNS lookup that its baseline is learned for. Sites,
     # organizations, countries and networks first seen after that are recorded as new.
     baseline_learning_days: float = Field(default=7.0, ge=1)
+    # An IoT device online for this many hours with fewer than dns_bypass_min_lookups DNS
+    # lookups through Pi-hole probably uses its own DNS server. 0 lookups turns it off.
+    dns_bypass_hours: float = Field(default=24.0, ge=1)
+    dns_bypass_min_lookups: int = Field(default=10, ge=0)
+
+    # Where alerts are sent: Apprise URLs (ntfy, Discord, email, ...), separated by spaces
+    # or commas. Unset keeps alerts in the app only.
+    apprise_urls: SecretStr | None = None
+    # At most this many notifications an hour; alerts past it wait and go out together.
+    notify_max_per_hour: int = Field(default=10, ge=1)
+    # The app's address as seen from a phone, for links in notifications. Optional.
+    public_url: str | None = None
 
     @field_validator("hostname_precedence")
     @classmethod
