@@ -152,6 +152,10 @@ tr.chosen td { font-weight: 550; }
 .ev.offline, .ev.port_closed { color: var(--muted); }
 .ev.port_opened, .ev.new_device, .ev.query_spike { font-weight: 550; }
 .alerts { list-style: none; padding: 0; margin: 0 0 10px; }
+.exports { list-style: none; padding: 0; margin: 0; }
+.exports li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.exports li:first-child { border-top: 0; }
+.exports-links { display: flex; gap: 14px; flex-shrink: 0; }
 .alert { padding: 8px 0; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
 .alert.done .alert-message { color: var(--muted); }
 .alert-main { display: flex; gap: 8px; align-items: baseline; }

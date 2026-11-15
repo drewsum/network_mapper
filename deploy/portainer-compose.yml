@@ -1,8 +1,10 @@
-# Server stack, deployed by Portainer as a Git-repository stack (see docs/deploy-portainer.md).
-# All settings come from the stack's env vars in Portainer, passed in explicitly below.
-# (Portainer doesn't write a stack.env that compose can read for Git stacks.)
-# The image is built on the host over SSH (scripts/build-on-host.sh), because the Portainer
-# TrueNAS app can't run builds. The API also serves the built UI.
+# Server stack. Deployed by Portainer as a Git-repository stack (docs/deploy-portainer.md), or
+# with plain `docker compose` from a checkout on the host (docs/deploy-truenas.md), which adds
+# deploy/compose.build.yml to build the image.
+# All settings come from env vars, passed in explicitly below. (Portainer doesn't write a
+# stack.env that compose can read for Git stacks.) With Portainer, the image is built on the
+# host over SSH (scripts/build-on-host.sh), because the Portainer TrueNAS app can't run
+# builds. The API also serves the built UI.
 
 # Every NETMAP_* setting from .env.example. Blank values fall back to the app's defaults.
 x-netmap-env: &netmap-env
@@ -33,17 +35,34 @@ x-netmap-env: &netmap-env
   NETMAP_PUBLIC_URL: ${NETMAP_PUBLIC_URL:-}
   NETMAP_ADMIN_PASSWORD: ${NETMAP_ADMIN_PASSWORD:-}
   NETMAP_SESSION_DAYS: ${NETMAP_SESSION_DAYS:-}
+  NETMAP_TRUSTED_PROXIES: ${NETMAP_TRUSTED_PROXIES:-}
+  NETMAP_BACKUP_INTERVAL_HOURS: ${NETMAP_BACKUP_INTERVAL_HOURS:-}
+  NETMAP_BACKUP_KEEP: ${NETMAP_BACKUP_KEEP:-}
   NETMAP_RAW_RETENTION_DAYS: ${NETMAP_RAW_RETENTION_DAYS:-}
   NETMAP_AGG_1H_RETENTION_DAYS: ${NETMAP_AGG_1H_RETENTION_DAYS:-}
   NETMAP_AGG_1D_RETENTION_DAYS: ${NETMAP_AGG_1D_RETENTION_DAYS:-}
   NETMAP_COMPRESS_AFTER_DAYS: ${NETMAP_COMPRESS_AFTER_DAYS:-}
   NETMAP_LOG_LEVEL: ${NETMAP_LOG_LEVEL:-}
 
+# Container logs rotate at 10 MB, three files each, so they can't fill the pool.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# The app containers run as the image's non-root user, with every capability dropped and a
+# read-only filesystem; only /tmp (and the volumes below) can be written.
 x-app: &app
-  image: netmap:local
+  image: ${NETMAP_IMAGE:-netmap:local}
   pull_policy: never
   environment: *netmap-env
   restart: unless-stopped
+  logging: *logging
+  cap_drop: [ALL]
+  read_only: true
+  tmpfs: [/tmp]
+  mem_limit: ${NETMAP_APP_MEMORY_LIMIT:-1g}
 
 services:
   db:
@@ -64,6 +83,8 @@ services:
       timeout: 5s
       retries: 20
     restart: unless-stopped
+    logging: *logging
+    mem_limit: ${NETMAP_DB_MEMORY_LIMIT:-2g}
 
   migrate:
     <<: *app
@@ -95,6 +116,7 @@ services:
     # Host networking so discovery sees the real LAN (ARP, mDNS, DHCP broadcasts).
     # The db service isn't reachable by name from here, so use its loopback port.
     network_mode: host
+    # The only capability any app container gets back.
     cap_add: [NET_RAW]
     # Downloaded GeoIP databases (about 140 MB), kept across restarts and image updates.
     volumes:
@@ -107,6 +129,25 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # A pg_dump every NETMAP_BACKUP_INTERVAL_HOURS into <NETMAP_DATA_DIR>/backups (see
+  # docs/backups.md). Starts as root only to hand that directory to the netmap user, then
+  # runs as it; CHOWN, SETUID and SETGID are all it needs for that.
+  backup:
+    <<: *app
+    user: "0"
+    command: ["sh", "-c", "chown netmap /backups && exec setpriv --reuid=netmap --regid=netmap --clear-groups netmap backup"]
+    cap_add: [CHOWN, SETUID, SETGID]
+    volumes:
+      - ${NETMAP_DATA_DIR}/backups:/backups
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/netmap-backup-heartbeat') > 900)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
     depends_on:
       migrate:
         condition: service_completed_successfully

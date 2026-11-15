@@ -17,6 +17,7 @@ from netmap.api import (
     baseline,
     categories,
     dns,
+    export,
     history,
     network,
     orgs,
@@ -55,6 +56,13 @@ class LoginRequest(BaseModel):
     password: str = Field(max_length=1024)
 
 
+# On every response: no framing by other sites, no MIME sniffing, no full URLs in referrers.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+}
 # Reachable without logging in: the container healthcheck, the login flow, and the SPA's
 # static files (the login page itself; they hold no data).
 PUBLIC_API = {"/api/health", "/api/auth/session", "/api/auth/login", "/api/auth/logout"}
@@ -216,6 +224,12 @@ def create_app() -> FastAPI:
         if not auth.auth_enabled(settings):
             return True
         return auth.token_valid(auth.signing_key(settings), request.cookies.get(auth.COOKIE))
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.update(SECURITY_HEADERS)
+        return response
 
     @app.middleware("http")
     async def require_login(request: Request, call_next):
@@ -382,6 +396,7 @@ def create_app() -> FastAPI:
     app.include_router(report.router)
     app.include_router(alerts.router)
     app.include_router(pihole.router)
+    app.include_router(export.router)
     _mount_spa(app, settings.web_dist_dir)
     return app
 
