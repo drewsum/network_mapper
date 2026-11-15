@@ -198,7 +198,8 @@ export default function NetworkMapPage() {
     };
   }, []);
 
-  // Live refresh: update nodes in place (keeping zoom and pan); refit when the filter changes.
+  // Live refresh: update nodes in place, keeping zoom and pan. Refit when the filter changes
+  // or devices come or go, so none end up off screen.
   useEffect(() => {
     const instance = cy.current;
     if (!instance || !data) return;
@@ -216,7 +217,7 @@ export default function NetworkMapPage() {
         }
       }
     });
-    const key = `${[...hidden].sort().join(",")}|${onlineOnly}`;
+    const key = `${[...hidden].sort().join(",")}|${onlineOnly}|${shown.length}`;
     if (fitted.current !== key) {
       instance.fit(undefined, 30);
       fitted.current = key;
@@ -256,6 +257,9 @@ export default function NetworkMapPage() {
         <label className="muted small">
           <input type="checkbox" checked={onlineOnly} onChange={(e) => setOnlineOnly(e.target.checked)} /> Online only
         </label>
+        <button type="button" className="plain" onClick={() => cy.current?.fit(undefined, 30)}>
+          Fit
+        </button>
       </div>
       <p className="legend">
         <span>
