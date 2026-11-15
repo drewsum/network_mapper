@@ -179,6 +179,10 @@ def run_backups(settings: Settings, once: bool = False) -> None:
             raise SystemExit(1)
         return
     log.info("backups every %s to %s, keeping %d", interval, directory, settings.backup_keep)
+    try:
+        directory.chmod(0o700)
+    except OSError as exc:
+        log.warning("can't make %s private: %s", directory, exc)
     while True:
         HEARTBEAT.touch()
         try:
