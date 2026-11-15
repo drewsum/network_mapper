@@ -5,6 +5,14 @@ import { CategorySelect, EditableText, ipKey, Status, useUpdateDevice } from "./
 
 type SortKey = "name" | "category" | "vendor" | "ip" | "status";
 
+const SORT_LABELS: Record<SortKey, string> = {
+  status: "Status",
+  name: "Name",
+  category: "Category",
+  vendor: "Vendor",
+  ip: "IP",
+};
+
 const SORTS: Record<SortKey, (d: Device) => string> = {
   name: (d) => deviceName(d).toLowerCase(),
   category: (d) => d.category,
@@ -88,6 +96,22 @@ export function DeviceTable() {
           <input type="checkbox" checked={iotOnly} onChange={(e) => setIotOnly(e.target.checked)} />
           IoT
         </label>
+        {/* Column headers sort on wide screens; phones stack the rows and get this instead. */}
+        <select
+          className="narrow-only"
+          value={`${sort.key}${sort.desc ? "-desc" : ""}`}
+          onChange={(e) => {
+            const [key, desc] = e.target.value.split("-");
+            setSort({ key: key as SortKey, desc: !!desc });
+          }}
+          aria-label="Sort devices"
+        >
+          {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+            <option key={k} value={k}>
+              Sort: {SORT_LABELS[k]}
+            </option>
+          ))}
+        </select>
         <span className="muted count">
           {rows.length === devices.data.length
             ? `${devices.data.length} devices, ${online} online`
@@ -95,7 +119,7 @@ export function DeviceTable() {
         </span>
       </div>
       <div className="table-wrap">
-        <table>
+        <table className="stack devices">
           <thead>
             <tr>
               {header("name", "Name")}
@@ -144,9 +168,9 @@ function Row({ device: d }: { device: Device }) {
         <CategorySelect value={d.category} onChange={(category) => update.mutate({ category })} />
         {d.is_iot && d.category !== "iot" ? <span className="tag">IoT</span> : null}
       </td>
-      <td>{d.is_randomized_mac ? <span className="muted">randomized MAC</span> : (d.vendor ?? "—")}</td>
+      <td className="vendor">{d.is_randomized_mac ? <span className="muted">randomized MAC</span> : (d.vendor ?? "—")}</td>
       <td className="mono">{d.ip ?? "—"}</td>
-      <td className="mono">{d.mac}</td>
+      <td className="mono hide-narrow">{d.mac}</td>
       <td>
         <Status online={d.online} lastSeen={d.last_seen} />
       </td>
