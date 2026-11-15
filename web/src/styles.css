@@ -144,7 +144,8 @@ tr.chosen td { font-weight: 550; }
 .timeline li { padding: 4px 0; border-bottom: 1px solid var(--line); }
 .timeline time { color: var(--muted); font-size: 12px; margin-right: 8px; }
 .ev.offline, .ev.port_closed { color: var(--muted); }
-.ev.port_opened, .ev.new_device { font-weight: 550; }
+.ev.port_opened, .ev.new_device, .ev.query_spike { font-weight: 550; }
+.baseline-counts { margin: 6px 0 10px; font-size: 14px; }
 @media (max-width: 600px) {
   .count { margin-left: 0; width: 100%; }
   .facts div { grid-template-columns: 90px 1fr; }

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from netmap.collector.arp import ArpSource
 from netmap.collector.base import Source
+from netmap.collector.baseline import BaselineSource
 from netmap.collector.categories import CategorySource
 from netmap.collector.geoip import GeoipSource
 from netmap.collector.names import NameSource
@@ -30,6 +31,7 @@ SOURCE_TYPES: list[type[Source]] = [
     GeoipSource,
     OrganizationSource,
     CategorySource,
+    BaselineSource,
 ]
 
 

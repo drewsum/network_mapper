@@ -21,8 +21,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 DEVICE_CATEGORIES = ("iot", "phone", "computer", "infrastructure", "media", "unknown")
 DNS_STATUSES = ("allowed", "blocked", "cached", "other")
+BASELINE_KEY_TYPES = ("domain", "org", "country", "asn")
+# Departures from a device's learned baseline (collector/baseline.py).
+BASELINE_EVENT_KINDS = (*(f"new_{k}" for k in BASELINE_KEY_TYPES), "query_spike")
 DEVICE_EVENT_KINDS = (
-    "new_device", "online", "offline", "new_ip", "port_opened", "port_closed"
+    "new_device", "online", "offline", "new_ip", "port_opened", "port_closed",
+    *BASELINE_EVENT_KINDS,
 )  # fmt: skip
 # Discovery protocols that can name a device (see collector/names.py).
 NAME_SOURCES = ("dhcp", "mdns", "ssdp", "netbios", "rdns")
@@ -75,7 +79,8 @@ class DeviceIP(Base):
 
 
 class DeviceEvent(Base):
-    """Device history: first sighting, online/offline transitions, new IPs, port changes."""
+    """Device history: first sighting, online/offline transitions, new IPs, port changes,
+    and departures from its baseline."""
 
     __tablename__ = "device_events"
     __table_args__ = (
@@ -93,6 +98,8 @@ class DeviceEvent(Base):
     ip: Mapped[str | None] = mapped_column(INET)
     port: Mapped[int | None] = mapped_column(Integer)
     protocol: Mapped[str | None] = mapped_column(Text)
+    # Baseline departures: {"key", "label"} for new_*, {"lookups", "usual"} for query_spike.
+    details: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
 
 
 class DeviceName(Base):
@@ -347,15 +354,23 @@ class Alert(Base):
 
 
 class DeviceBaseline(Base):
-    """What is 'normal' for a device: domains, orgs, countries it usually talks to."""
+    """What is 'normal' for a device: the sites (registrable domains), organizations,
+    countries and networks (AS numbers) it looks up (collector/baseline.py)."""
 
     __tablename__ = "device_baselines"
+    __table_args__ = (
+        CheckConstraint(
+            "key_type IN (" + ", ".join(f"'{k}'" for k in BASELINE_KEY_TYPES) + ")",
+            name="ck_device_baselines_key_type",
+        ),
+    )
 
     mac: Mapped[str] = mapped_column(
         MACADDR, ForeignKey("devices.mac", ondelete="CASCADE"), primary_key=True
     )
     key_type: Mapped[str] = mapped_column(Text, primary_key=True)  # domain | org | country | asn
     key: Mapped[str] = mapped_column(Text, primary_key=True)
+    # Days (UTC) the device looked it up on.
     hits: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     expected: Mapped[bool | None] = mapped_column(Boolean)  # user verdict; null = not reviewed
     first_seen: Mapped[datetime] = _ts(server_default=func.now())

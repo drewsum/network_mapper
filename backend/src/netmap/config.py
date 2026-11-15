@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     geoip_refresh_days: float = Field(default=7.0, ge=1)
     # How old a threat blocklist may get before it's downloaded again.
     blocklist_refresh_hours: float = Field(default=24.0, ge=1)
+    # Days after a device's first DNS lookup that its baseline is learned for. Sites,
+    # organizations, countries and networks first seen after that are recorded as new.
+    baseline_learning_days: float = Field(default=7.0, ge=1)
 
     @field_validator("hostname_precedence")
     @classmethod

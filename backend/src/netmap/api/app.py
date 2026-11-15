@@ -11,7 +11,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from netmap import __version__
-from netmap.api import auth, categories, dns, history, network, orgs
+from netmap.api import auth, baseline, categories, dns, history, network, orgs
 from netmap.api.deps import DB, MAC_PATTERN, Mac, get_device
 from netmap.collector.inventory import known_addresses, merge_devices
 from netmap.config import get_settings
@@ -123,6 +123,7 @@ class DeviceEventOut(BaseModel):
     ip: str | None
     port: int | None
     protocol: str | None
+    details: dict | None
 
     @field_validator("ip", mode="before")
     @classmethod
@@ -366,6 +367,7 @@ def create_app() -> FastAPI:
     app.include_router(categories.router)
     app.include_router(network.router)
     app.include_router(history.router)
+    app.include_router(baseline.router)
     _mount_spa(app, settings.web_dist_dir)
     return app
 

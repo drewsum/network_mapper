@@ -114,6 +114,17 @@ IP it has resolved to, is on a list:
 Flagged domains carry a red "threat" tag in a device's DNS table and are listed on the
 Domains page. Download problems show on the status bar as the "blocklists" check.
 
+## Baselines
+
+Each device learns what's normal for it: the sites (registrable domains), organizations,
+countries and networks (AS numbers) it looks up, and how many lookups it makes in a busy
+hour. Learning starts with the device's first DNS lookup and lasts
+`NETMAP_BASELINE_LEARNING_DAYS` (7 by default). After that, anything seen for the first
+time is recorded in the device's History, as is an hour with at least 200 lookups and four
+times its usual busy hour. A device page's "Normal behavior" card shows the baseline and
+the latest changes. Phones and computers get a baseline but no changes recorded, since new
+sites are everyday for them. Changing the learning period applies to past data too.
+
 ## Images and CI
 
 There's no CI. Images are built on the machine that runs them (`docker compose up -d --build`):
