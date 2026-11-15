@@ -78,12 +78,28 @@ export interface DeviceDetail extends Device {
   names: DeviceName[];
 }
 
+/** Departures from a device's learned baseline. */
+export type DepartureKind = "new_domain" | "new_org" | "new_country" | "new_asn" | "query_spike";
+
 export interface DeviceEvent {
   time: string;
-  kind: "new_device" | "online" | "offline" | "new_ip" | "port_opened" | "port_closed";
+  kind: "new_device" | "online" | "offline" | "new_ip" | "port_opened" | "port_closed" | DepartureKind;
   ip: string | null;
   port: number | null;
   protocol: string | null;
+  /** {key, label?} for new_*, {lookups, usual} for query_spike. */
+  details: { key?: string; label?: string; lookups?: number; usual?: number } | null;
+}
+
+export interface Baseline {
+  learning_days: number;
+  since: string | null;
+  until: string | null;
+  learning: boolean;
+  watched: boolean;
+  counts: { domain: number; org: number; country: number; asn: number };
+  usual_peak: number;
+  departures: Pick<DeviceEvent, "time" | "kind" | "details">[];
 }
 
 export interface Port {
@@ -337,6 +353,7 @@ export const api = {
   summary: (mac: string, start: string) =>
     get<DeviceSummary>(`/api/devices/${mac}/summary?${new URLSearchParams({ start })}`),
   ports: (mac: string) => get<Port[]>(`/api/devices/${mac}/ports`),
+  baseline: (mac: string) => get<Baseline>(`/api/devices/${mac}/baseline`),
   history: (start: string, end: string | undefined, by: HistoryDimension, filters: HistoryFilters) =>
     get<History>(
       `/api/history?${new URLSearchParams({ start, ...(end ? { end } : {}), by, ...(filters as Record<string, string>) })}`,

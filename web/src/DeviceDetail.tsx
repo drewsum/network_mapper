@@ -68,6 +68,7 @@ export function DeviceDetailPage({ mac }: { mac: string }) {
       <Suspense fallback={null}>
         <HeatmapCard mac={d.mac} />
       </Suspense>
+      <BaselineCard mac={d.mac} />
       <Domains mac={d.mac} start={start} />
       <Names device={d} />
       <Addresses device={d} />
@@ -321,7 +322,8 @@ function Forwards({ mac }: { mac: string }) {
   );
 }
 
-function describe(e: DeviceEvent): string {
+function describe(e: Pick<DeviceEvent, "kind" | "ip" | "port" | "protocol" | "details">): string {
+  const key = e.details?.key ?? "";
   switch (e.kind) {
     case "new_device":
       return `First seen${e.ip ? ` at ${e.ip}` : ""}`;
@@ -335,7 +337,78 @@ function describe(e: DeviceEvent): string {
       return `Port ${e.port}/${e.protocol} opened`;
     case "port_closed":
       return `Port ${e.port}/${e.protocol} closed`;
+    case "new_domain":
+      return `New site: ${key}`;
+    case "new_org":
+      return `New organization: ${key}`;
+    case "new_country":
+      return `New country: ${countryName(key)}`;
+    case "new_asn":
+      return `New network: AS${key}${e.details?.label ? ` (${e.details.label})` : ""}`;
+    case "query_spike":
+      return `Lookup spike: ${(e.details?.lookups ?? 0).toLocaleString()} in an hour (usually up to ${(e.details?.usual ?? 0).toLocaleString()})`;
   }
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n.toLocaleString()} ${n === 1 ? one : many}`;
+}
+
+function dateOnly(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+/** What the device normally looks up, and what's new since it was learned. */
+function BaselineCard({ mac }: { mac: string }) {
+  const baseline = useQuery({ queryKey: ["baseline", mac], queryFn: () => api.baseline(mac) });
+  const b = baseline.data;
+  if (baseline.error) {
+    return (
+      <section className="card">
+        <h2>Normal behavior</h2>
+        <p className="error">{baseline.error.message}</p>
+      </section>
+    );
+  }
+  if (!b) return null;
+  const c = b.counts;
+  return (
+    <section className="card">
+      <h2>Normal behavior</h2>
+      {!b.since ? (
+        <p className="muted">Learning starts with the device's first DNS lookup.</p>
+      ) : (
+        <>
+          <p className="muted small">
+            {b.learning
+              ? `Learning for ${plural(b.learning_days, "day", "days")}, until ${dateOnly(b.until!)}.`
+              : `Learned over ${plural(b.learning_days, "day", "days")} from ${dateOnly(b.since)}.`}{" "}
+            {b.watched
+              ? "Sites, organizations, countries and networks first seen after that are listed here and in History, as are hours with far more lookups than usual."
+              : "Changes aren't recorded for phones and computers, which visit new sites all the time."}
+          </p>
+          <p className="baseline-counts">
+            {plural(c.domain, "site", "sites")} · {plural(c.org, "organization", "organizations")} ·{" "}
+            {plural(c.country, "country", "countries")} · {plural(c.asn, "network", "networks")} · up to{" "}
+            {plural(b.usual_peak, "lookup", "lookups")} in a busy hour
+          </p>
+        </>
+      )}
+      {b.departures.length > 0 && (
+        <ol className="timeline">
+          {b.departures.map((e, i) => (
+            <li key={`${e.time}-${e.kind}-${i}`} className={`ev ${e.kind}`}>
+              <time dateTime={e.time} title={dateTime(e.time)}>
+                {ago(e.time)}
+              </time>{" "}
+              {describe({ ...e, ip: null, port: null, protocol: null })}
+            </li>
+          ))}
+        </ol>
+      )}
+      {b.watched && !b.learning && b.departures.length === 0 && <p className="muted small">Nothing new since.</p>}
+    </section>
+  );
 }
 
 function History({ mac }: { mac: string }) {
