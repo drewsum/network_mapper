@@ -14,21 +14,92 @@ const GROUP_LABELS: Record<Category, string> = {
 const SPACING = 104; // between devices in a group, wide enough for their labels
 const HUB = "hub";
 const REFRESH_MS = 15_000;
+/** Below this map width, stack the groups in a column (see ``column``). */
+const NARROW = 560;
+const COLUMN_COLS = 3;
 
 /** Node diameter from lookups in the last hour: idle devices stay small, busy ones grow. */
 function size(queries: number): number {
   return Math.min(56, 18 + 4 * Math.sqrt(queries));
 }
 
-/** Groups around the hub, each a grid of its devices sorted by name, so a refresh or a new
- * device moves as little as possible. */
-function layout(devices: MapDevice[], router: string | null): ElementDefinition[] {
-  const groups = CATEGORIES.map((c) => ({
+interface Group {
+  category: Category;
+  members: MapDevice[];
+}
+
+/** Devices by category, each sorted by name, so a refresh or a new device moves as little
+ * as possible. */
+function grouped(devices: MapDevice[], router: string | null): Group[] {
+  return CATEGORIES.map((c) => ({
     category: c,
     members: devices
       .filter((d) => d.category === c && d.mac !== router)
       .sort((a, b) => deviceName(a).localeCompare(deviceName(b))),
   })).filter((g) => g.members.length > 0);
+}
+
+function hubNode(devices: MapDevice[], router: string | null, position: { x: number; y: number }): ElementDefinition {
+  const hub = devices.find((d) => d.mac === router);
+  return {
+    group: "nodes",
+    data: hub
+      ? { id: HUB, label: deviceName(hub), mac: hub.mac, size: 64, online: hub.online ? 1 : 0, kind: "hub" }
+      : { id: HUB, label: "Network", size: 64, online: 1, kind: "hub" },
+    position,
+  };
+}
+
+function groupNode(g: Group): ElementDefinition {
+  const online = g.members.filter((d) => d.online).length;
+  return {
+    group: "nodes",
+    data: { id: `group-${g.category}`, label: `${GROUP_LABELS[g.category]} · ${online}/${g.members.length} online`, kind: "group" },
+  };
+}
+
+function deviceNode(g: Group, d: MapDevice, position: { x: number; y: number }): ElementDefinition {
+  return {
+    group: "nodes",
+    data: {
+      id: d.mac,
+      mac: d.mac,
+      parent: `group-${g.category}`,
+      label: deviceName(d),
+      size: size(d.queries),
+      online: d.online ? 1 : 0,
+      blocked: d.blocked > 0 ? 1 : 0,
+      kind: "device",
+    },
+    position,
+  };
+}
+
+/** Groups in a column under the hub, for a phone: a few devices across, read top to
+ * bottom like a list. No edges; they would cross the groups in between. */
+function column(devices: MapDevice[], router: string | null): ElementDefinition[] {
+  const elements = [hubNode(devices, router, { x: 0, y: 0 })];
+  let top = 110; // below the hub and its label, to the first group's first row
+  for (const g of grouped(devices, router)) {
+    const cols = Math.min(COLUMN_COLS, g.members.length);
+    elements.push(groupNode(g));
+    g.members.forEach((d, j) => {
+      elements.push(
+        deviceNode(g, d, {
+          x: ((j % cols) - (cols - 1) / 2) * SPACING,
+          y: top + Math.floor(j / cols) * SPACING,
+        }),
+      );
+    });
+    // The last row, then room for this group's padding and the next one's label.
+    top += Math.ceil(g.members.length / cols) * SPACING + 60;
+  }
+  return elements;
+}
+
+/** Groups around the hub, each a grid of its devices. */
+function layout(devices: MapDevice[], router: string | null): ElementDefinition[] {
+  const groups = grouped(devices, router);
   // A group's diagonal bounds it at any angle around the hub, so the ring of groups is
   // sized from those: long enough to fit them all, and far enough out to clear the hub.
   const diagonals = groups.map((g) => {
@@ -40,49 +111,25 @@ function layout(devices: MapDevice[], router: string | null): ElementDefinition[
     (diagonals.reduce((a, b) => a + b, 0) + groups.length * 40) / (2 * Math.PI),
     Math.max(0, ...diagonals) / 2 + 120,
   );
-  const hub = devices.find((d) => d.mac === router);
-  const elements: ElementDefinition[] = [
-    {
-      group: "nodes",
-      data: hub
-        ? { id: HUB, label: deviceName(hub), mac: hub.mac, size: 64, online: hub.online ? 1 : 0, kind: "hub" }
-        : { id: HUB, label: "Network", size: 64, online: 1, kind: "hub" },
-      position: { x: 0, y: 0 },
-    },
-  ];
+  const elements = [hubNode(devices, router, { x: 0, y: 0 })];
   groups.forEach((g, i) => {
     const angle = (2 * Math.PI * i) / groups.length - Math.PI / 2;
     const cols = Math.ceil(Math.sqrt(g.members.length));
     const rows = Math.ceil(g.members.length / cols);
     const cx = radius * Math.cos(angle);
     const cy = radius * Math.sin(angle);
-    const online = g.members.filter((d) => d.online).length;
-    elements.push({
-      group: "nodes",
-      data: { id: `group-${g.category}`, label: `${GROUP_LABELS[g.category]} · ${online}/${g.members.length} online`, kind: "group" },
-    });
+    elements.push(groupNode(g));
     elements.push({
       group: "edges",
       data: { id: `edge-${g.category}`, source: HUB, target: `group-${g.category}` },
     });
     g.members.forEach((d, j) => {
-      elements.push({
-        group: "nodes",
-        data: {
-          id: d.mac,
-          mac: d.mac,
-          parent: `group-${g.category}`,
-          label: deviceName(d),
-          size: size(d.queries),
-          online: d.online ? 1 : 0,
-          blocked: d.blocked > 0 ? 1 : 0,
-          kind: "device",
-        },
-        position: {
+      elements.push(
+        deviceNode(g, d, {
           x: cx + ((j % cols) - (cols - 1) / 2) * SPACING,
           y: cy + (Math.floor(j / cols) - (rows - 1) / 2) * SPACING,
-        },
-      });
+        }),
+      );
     });
   });
   return elements;
@@ -158,12 +205,26 @@ export default function NetworkMapPage() {
   const box = useRef<HTMLDivElement>(null);
   const cy = useRef<Core | null>(null);
   const fitted = useRef("");
+  const [width, setWidth] = useState(0);
+  const narrow = width > 0 && width < NARROW;
 
   const data = map.data;
   const shown = useMemo(
     () => (data?.devices ?? []).filter((d) => !hidden.has(d.category) && (!onlineOnly || d.online || d.mac === data?.router)),
     [data, hidden, onlineOnly],
   );
+  const elements = useMemo(
+    () => (data ? (narrow ? column : layout)(shown, data.router) : []),
+    [data, shown, narrow],
+  );
+  // A phone gets a column as tall as its content needs at (up to) full size, and scrolls
+  // the page past it rather than panning inside it.
+  const height = useMemo(() => {
+    if (!narrow) return undefined;
+    const bottom = Math.max(0, ...elements.map((e) => e.position?.y ?? 0));
+    const scale = Math.min(1, (width - 24) / (COLUMN_COLS * SPACING + 40));
+    return Math.round((bottom + 130) * scale + 24);
+  }, [elements, narrow, width]);
   const byMac = useMemo(() => new Map((data?.devices ?? []).map((d) => [d.mac, d])), [data]);
   // The tooltip handler is bound once; it reads the latest devices through this ref.
   const byMacRef = useRef(byMac);
@@ -198,11 +259,15 @@ export default function NetworkMapPage() {
       if (box.current) box.current.style.cursor = "";
     });
     instance.on("viewport", () => setHover(null));
+    const el = box.current;
+    const observer = new ResizeObserver(() => setWidth(el.clientWidth));
+    observer.observe(el);
     const scheme = matchMedia("(prefers-color-scheme: dark)");
     const restyle = () => instance.style(stylesheet());
     scheme.addEventListener("change", restyle);
     cy.current = instance;
     return () => {
+      observer.disconnect();
       scheme.removeEventListener("change", restyle);
       instance.destroy();
       cy.current = null;
@@ -214,7 +279,6 @@ export default function NetworkMapPage() {
   useEffect(() => {
     const instance = cy.current;
     if (!instance || !data) return;
-    const elements = layout(shown, data.router);
     const ids = new Set(elements.map((e) => e.data.id));
     instance.batch(() => {
       instance.elements().filter((e) => !ids.has(e.id())).remove();
@@ -228,12 +292,35 @@ export default function NetworkMapPage() {
         }
       }
     });
-    const key = `${[...hidden].sort().join(",")}|${onlineOnly}|${shown.length}`;
+    const key = `${[...hidden].sort().join(",")}|${onlineOnly}|${shown.length}|${narrow}|${height}`;
     if (fitted.current !== key) {
-      instance.fit(undefined, 30);
+      // The container may just have changed height; measure before fitting.
+      instance.resize();
+      instance.fit(undefined, narrow ? 12 : 30);
       fitted.current = key;
     }
-  }, [data, shown, hidden, onlineOnly]);
+  }, [data, elements, shown, hidden, onlineOnly, narrow, height]);
+
+  /** Phones: the canvas ignores touches (so the page scrolls), and a tap opens the device
+   * under it, found from the tap's position on the map. */
+  const tap = (e: React.MouseEvent) => {
+    const instance = cy.current;
+    if (!narrow || !instance || !box.current) return;
+    const rect = box.current.getBoundingClientRect();
+    const pan = instance.pan();
+    const zoom = instance.zoom();
+    const x = (e.clientX - rect.left - pan.x) / zoom;
+    const y = (e.clientY - rect.top - pan.y) / zoom;
+    const hit = instance
+      .nodes('[kind != "group"]')
+      .filter((n) => {
+        const b = n.boundingBox({ includeLabels: true });
+        return x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2;
+      })
+      .first();
+    const mac = hit.nonempty() ? hit.data("mac") : null;
+    if (mac) location.hash = `#/devices/${mac}`;
+  };
 
   const counts = useMemo(() => {
     const out = new Map<Category, number>();
@@ -268,7 +355,7 @@ export default function NetworkMapPage() {
         <label className="muted small">
           <input type="checkbox" checked={onlineOnly} onChange={(e) => setOnlineOnly(e.target.checked)} /> Online only
         </label>
-        <button type="button" className="plain" onClick={() => cy.current?.fit(undefined, 30)}>
+        <button type="button" className="plain hide-narrow" onClick={() => cy.current?.fit(undefined, 30)}>
           Fit
         </button>
       </div>
@@ -285,11 +372,19 @@ export default function NetworkMapPage() {
           <span className="swatch ring" />
           Pi-hole blocked some lookups
         </span>
-        <span>Size: DNS lookups in the last hour. Updates every 15 seconds; click a device to open it.</span>
+        <span>Size: DNS lookups in the last hour. Updates every 15 seconds; click or tap a device to open it.</span>
       </p>
       {map.error && <p className="error">{map.error.message}</p>}
       <div className="network-map card">
-        <div ref={box} className="cy" role="img" aria-label="Map of devices around the router, grouped by category" />
+        {/* Click handler: phones only, where the canvas itself ignores pointer events. */}
+        <div
+          ref={box}
+          className={narrow ? "cy static" : "cy"}
+          style={height ? { height } : undefined}
+          onClick={tap}
+          role="img"
+          aria-label="Map of devices around the router, grouped by category"
+        />
         {hover?.device && (
           <div
             className="tooltip"

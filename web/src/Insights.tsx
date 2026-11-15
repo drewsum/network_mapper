@@ -203,12 +203,13 @@ export function HeatmapCard({ mac }: { mac?: string }) {
   const data = heat.data;
   const ref = useChart(data, (data, c, width) => {
     const narrow = width < NARROW;
-    const dayLabels = data.days.map((d) =>
-      new Date(`${d}T12:00:00`).toLocaleDateString(
-        undefined,
-        narrow ? { weekday: "short", day: "numeric" } : { weekday: "short", month: "short", day: "numeric" },
-      ),
-    );
+    const dayLabels = data.days.map((d) => {
+      const date = new Date(`${d}T12:00:00`);
+      // "Sat 14": some locales put a bare day number before the weekday.
+      return narrow
+        ? `${date.toLocaleDateString(undefined, { weekday: "short" })} ${date.getDate()}`
+        : date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    });
     return {
       tooltip: {
         backgroundColor: c.card,
