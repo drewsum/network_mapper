@@ -193,3 +193,13 @@ td.blocked { color: var(--bad); }
 .shares .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shares .value { color: var(--muted); font-size: 13px; }
 .shares .bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--chart-allowed); min-width: 2px; }
+
+/* Network map */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; color: var(--muted); }
+.chip.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 550; }
+.network-map { position: relative; padding: 0; overflow: hidden; }
+.network-map .cy { height: min(72vh, 760px); min-height: 420px; }
+.network-map .tooltip { position: absolute; }
+.swatch.offline { background: var(--line); border: 1px dashed var(--muted); }
+.swatch.ring { background: transparent; border: 2px solid var(--chart-blocked); border-radius: 50%; }
