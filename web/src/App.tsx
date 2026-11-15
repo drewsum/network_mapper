@@ -6,6 +6,7 @@ import { DeviceDetailPage } from "./DeviceDetail";
 import { DeviceTable } from "./DeviceTable";
 import { HistoryPage } from "./History";
 import { Login } from "./Login";
+import { Masthead } from "./Masthead";
 import { OrganizationsPage } from "./Organizations";
 import { ReportPage } from "./Report";
 import { SystemPage } from "./System";
@@ -136,7 +137,13 @@ export function App() {
         <NetworkMapPage />
       </Suspense>
     );
-  else page = <DeviceTable />;
+  else
+    page = (
+      <>
+        <Masthead />
+        <DeviceTable />
+      </>
+    );
 
   return (
     <main>
