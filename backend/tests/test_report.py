@@ -63,6 +63,7 @@ def client(db_env):
                 {"domain": "bad.example", "organization": "Other", "category": "unknown",
                  "is_blocklisted": True},
                 {"domain": "a.tuyaus.com", "organization": "Tuya", "category": "vendor"},
+                {"domain": "iot.ring.example", "organization": "Other", "category": "unknown"},
             ],
         )  # fmt: skip
         s.execute(
@@ -73,6 +74,7 @@ def client(db_env):
             + [q(CAM, "pool.ntp.org", NIGHT)]
             + [q(CAM, "weird.example", NIGHT)] * 2
             + [q(CAM, "printer.local", NOON)]
+            + [q(PLUG, "iot.ring.example", NOON)]
             + [q(PLUG, "a.tuyaus.com", NOON), q(PLUG, "bad.example", NOON)]
             + [q(LAPTOP, "weird.example", NOON)],
         )
@@ -108,6 +110,20 @@ def test_sorts_each_iot_devices_sites(client):
     # The UPnP manufacturer names the maker when the MAC vendor is the chip's.
     assert plug["tuyaus.com"]["status"] == "maker"
     assert plug["bad.example"]["status"] == "threat"
+    # ring.example is named for Ring, not Tuya.
+    assert plug["ring.example"]["status"] == "third_party"
+
+
+@pytest.mark.db
+def test_a_site_named_for_the_maker_is_the_makers(client):
+    # Ring's site with no organization known still counts as Ring's own for the doorbell.
+    with get_sessionmaker()() as s:
+        s.execute(insert(DnsQuery), [q(CAM, "x.ring.io", NOON)])
+        s.commit()
+    with get_engine().connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        refresh_all_aggregates(conn)
+    cam, _ = sites(client.get("/api/reports/iot").json(), CAM)
+    assert cam["ring.io"]["status"] == "maker"
 
 
 @pytest.mark.db

@@ -164,7 +164,9 @@ def build_report(db: Session, start: datetime, tz: str) -> Report:
         categories = [r.category for r in domains if r.category in CATEGORY_RANK]
         category = min(categories, key=CATEGORY_RANK.index) if categories else None
         organization = next((r.organization for r in domains if r.organization), None)
-        maker = bool(words(organization) & makers.get(mac, set()))
+        # The maker's own: its organization, or the site's name, names the maker.
+        named = words(organization) | words(site.split(".")[0])
+        maker = bool(named & makers.get(mac, set()))
         expected = verdicts.get((mac, site))
         sites[mac].append(
             Site(
