@@ -111,3 +111,13 @@ def test_longer_ranges_use_coarser_aggregates(client):
         86400, "dns_activity_1d", 7
     )  # fmt: skip
     assert client.get("/api/history", params={"by": "nope"}).status_code == 422
+
+
+def test_migrate_catches_up_rows_written_into_materialized_spans(client):
+    """Pi-hole's first poll backfills 24 hours, into spans the aggregates already hold."""
+    before = get(client)["queries"]
+    with get_sessionmaker()() as s:
+        s.execute(insert(DnsQuery), [q(TV, "late.example", timedelta(hours=20))])
+        s.commit()
+    main(["migrate"])
+    assert get(client)["queries"] == before + 1

@@ -12,9 +12,12 @@ from netmap.config import Settings
 
 log = logging.getLogger(__name__)
 
-# view -> (refresh start_offset, end_offset, schedule_interval)
+# view -> (refresh start_offset, end_offset, schedule_interval). A refresh only recomputes
+# spans with new rows, so the windows can be generous; each must reach back past the
+# Pi-hole poller's first 24-hour backfill, or rows written into an already materialized
+# span would never show in that view.
 CAGG_REFRESH = {
-    "dns_activity_1m": ("2 hours", "1 minute", "1 minute"),
+    "dns_activity_1m": ("2 days", "1 minute", "1 minute"),
     "dns_activity_1h": ("3 days", "1 hour", "15 minutes"),
     "dns_activity_1d": ("7 days", "1 day", "1 hour"),
 }
@@ -64,6 +67,20 @@ def apply_policies(conn: Connection, settings: Settings) -> None:
             {"r": relation, "d": _days(days)},
         )
         log.info("retention %s = %d days", relation, days)
+
+
+def refresh_recent_aggregates(conn: Connection) -> None:
+    """Refresh each aggregate over its policy window now, catching up on rows written
+    while a window was narrower. Cheap when nothing changed. Needs an autocommit
+    connection."""
+    for view, (start, end, _) in CAGG_REFRESH.items():
+        conn.execute(
+            text(
+                f"CALL refresh_continuous_aggregate('{view}', "
+                "now() - CAST(:s AS interval), now() - CAST(:e AS interval))"
+            ),
+            {"s": start, "e": end},
+        )
 
 
 def refresh_all_aggregates(conn: Connection) -> None:
