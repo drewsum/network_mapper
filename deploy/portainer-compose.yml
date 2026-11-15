@@ -43,6 +43,29 @@ x-netmap-env: &netmap-env
   NETMAP_AGG_1D_RETENTION_DAYS: ${NETMAP_AGG_1D_RETENTION_DAYS:-}
   NETMAP_COMPRESS_AFTER_DAYS: ${NETMAP_COMPRESS_AFTER_DAYS:-}
   NETMAP_LOG_LEVEL: ${NETMAP_LOG_LEVEL:-}
+  NETMAP_CRITICAL_GRACE_MINUTES: ${NETMAP_CRITICAL_GRACE_MINUTES:-}
+  NETMAP_CRITICAL_REMIND_HOURS: ${NETMAP_CRITICAL_REMIND_HOURS:-}
+  NETMAP_UPLOAD_HEAVY_MB: ${NETMAP_UPLOAD_HEAVY_MB:-}
+  NETMAP_UPLOAD_HEAVY_RATIO: ${NETMAP_UPLOAD_HEAVY_RATIO:-}
+  NETMAP_CAPTURE_INTERFACE: ${NETMAP_CAPTURE_INTERFACE:-}
+  NETMAP_CAPTURE_REPORT_SECONDS: ${NETMAP_CAPTURE_REPORT_SECONDS:-}
+  NETMAP_NETFLOW_PORT: ${NETMAP_NETFLOW_PORT:-}
+  NETMAP_NETFLOW_BIND: ${NETMAP_NETFLOW_BIND:-}
+  NETMAP_PCAP_MAX_MB: ${NETMAP_PCAP_MAX_MB:-}
+  NETMAP_PCAP_MAX_MINUTES: ${NETMAP_PCAP_MAX_MINUTES:-}
+  NETMAP_PCAP_KEEP: ${NETMAP_PCAP_KEEP:-}
+  NETMAP_FINGERBANK_API_KEY: ${NETMAP_FINGERBANK_API_KEY:-}
+  NETMAP_UNIFI_URL: ${NETMAP_UNIFI_URL:-}
+  NETMAP_UNIFI_USERNAME: ${NETMAP_UNIFI_USERNAME:-}
+  NETMAP_UNIFI_PASSWORD: ${NETMAP_UNIFI_PASSWORD:-}
+  NETMAP_UNIFI_SITE: ${NETMAP_UNIFI_SITE:-}
+  NETMAP_UNIFI_VERIFY_TLS: ${NETMAP_UNIFI_VERIFY_TLS:-}
+  NETMAP_OPENWRT_URLS: ${NETMAP_OPENWRT_URLS:-}
+  NETMAP_OPENWRT_USERNAME: ${NETMAP_OPENWRT_USERNAME:-}
+  NETMAP_OPENWRT_PASSWORD: ${NETMAP_OPENWRT_PASSWORD:-}
+  NETMAP_OPENWRT_VERIFY_TLS: ${NETMAP_OPENWRT_VERIFY_TLS:-}
+  NETMAP_WIFI_POLL_SECONDS: ${NETMAP_WIFI_POLL_SECONDS:-}
+  NETMAP_METRICS_TOKEN: ${NETMAP_METRICS_TOKEN:-}
 
 # Container logs rotate at 10 MB, three files each, so they can't fill the pool.
 x-logging: &logging
@@ -102,6 +125,9 @@ services:
     command: ["netmap", "api"]
     ports:
       - "${NETMAP_API_PUBLISH_PORT:-8000}:8000"
+    # Packet captures made by the capture service, for download.
+    volumes:
+      - captures:/captures:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
       interval: 15s
@@ -155,5 +181,32 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Opt-in traffic capture (docs/span.md): flows from a SPAN mirror port and/or NetFlow/IPFIX,
+  # live throughput, packet captures. Started only with the "capture" profile
+  # (COMPOSE_PROFILES=capture), and only useful with NETMAP_CAPTURE_INTERFACE or
+  # NETMAP_NETFLOW_PORT set.
+  capture:
+    <<: *app
+    profiles: [capture]
+    # python-netraw and tcpdump carry CAP_NET_RAW as file capabilities (see Dockerfile).
+    command: ["python-netraw", "-m", "netmap.cli", "capture"]
+    # Host networking to see the mirror NIC (and to receive NetFlow exports on the host).
+    network_mode: host
+    cap_add: [NET_RAW]
+    volumes:
+      - captures:/captures
+    environment:
+      <<: *netmap-env
+      NETMAP_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${NETMAP_DB_PUBLISH_PORT:-5433}/${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/netmap-capture-heartbeat') > 60)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   geoip:
+  captures:

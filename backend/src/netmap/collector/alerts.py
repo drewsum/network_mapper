@@ -6,7 +6,11 @@ Alerts come from:
   in lookups; see baseline.py);
 - lookups of a domain on a threat blocklist, at most once a day per device and domain;
 - port forwards opened on the router over UPnP;
-- IoT devices that may skip Pi-hole (bypass.py), once each time one goes quiet.
+- IoT devices that may skip Pi-hole (bypass.py), once each time one goes quiet;
+- devices marked critical (cameras, locks) unheard for their grace period: a critical alert
+  per outage, a reminder every NETMAP_CRITICAL_REMIND_HOURS, and word when one is back;
+- captured traffic (traffic.py): DNS that skips Pi-hole, lateral traffic, upload-heavy
+  hours, unencrypted protocols.
 
 Each kind has a default action, which rules (alert_rules) override for every device or
 one: "notify" keeps the alert and sends it (notify.py), "record" only keeps it, "mute"
@@ -23,6 +27,7 @@ from sqlalchemy import func, insert, or_, select, text
 from sqlalchemy.orm import Session
 
 from netmap.blocklists import LABELS, PIHOLE
+from netmap.collector import traffic
 from netmap.collector.base import Source
 from netmap.collector.baseline import UNWATCHED_CATEGORIES
 from netmap.collector.bypass import dns_checks, unknown_reason
@@ -63,6 +68,11 @@ KINDS = {
     "blocklist_hit": Kind("Threat blocklist hit", "critical", "notify"),
     "upnp_forward": Kind("UPnP port forward", "warning", "notify"),
     "dns_bypass": Kind("May skip Pi-hole", "warning", "notify"),
+    "critical_offline": Kind("Critical device offline", "critical", "notify"),
+    "critical_online": Kind("Critical device back", "info", "notify"),
+    "lateral_traffic": Kind("Lateral traffic", "info", "record"),
+    "upload_heavy": Kind("Heavy upload", "warning", "notify"),
+    "unencrypted": Kind("Unencrypted traffic", "info", "record"),
 }
 assert tuple(KINDS) == ALERT_KINDS
 LABELS_BY_KIND = {k: v.label for k, v in KINDS.items()}
@@ -302,6 +312,74 @@ def bypassers(session: Session, devices: Devices, settings: Settings, now: datet
     return found
 
 
+_CRITICAL = text("""
+    SELECT CAST(dv.mac AS text) AS mac, dv.last_seen, dv.offline_grace_minutes AS grace,
+           (SELECT a.details FROM alerts a WHERE a.mac = dv.mac AND a.kind = 'critical_offline'
+            ORDER BY a.time DESC LIMIT 1) AS last_alert
+    FROM devices dv
+    WHERE dv.critical AND dv.merged_into IS NULL
+""")
+
+
+def _minutes(delta: timedelta) -> str:
+    m = int(delta.total_seconds() // 60)
+    return f"{m} minutes" if m < 120 else f"{m / 60:.1f} hours"
+
+
+def critical(session: Session, devices: Devices, settings: Settings, now: datetime) -> list[Found]:
+    """Critical devices unheard for their grace period: once per outage (an outage is
+    known by when the device was last heard), again every NETMAP_CRITICAL_REMIND_HOURS
+    while it lasts; and once when the device is heard again."""
+    found = []
+    remind = timedelta(hours=settings.critical_remind_hours)
+    for r in session.execute(_CRITICAL).mappings():
+        mac, last_seen = r["mac"], r["last_seen"]
+        grace = timedelta(minutes=r["grace"] or settings.critical_grace_minutes)
+        name = devices.name(mac)
+        outage = f"critical_offline:{mac}:{int(last_seen.timestamp())}"
+        if now - last_seen >= grace:
+            last = _latest(session, {outage}).get(outage)
+            if last is None or (remind and last <= now - remind):
+                again = " still" if last else ""
+                found.append(Found(
+                    now, mac, "critical_offline",
+                    f"{name} is{again} offline: nothing heard from it for "
+                    f"{_minutes(now - last_seen)}",
+                    {"last_seen": last_seen.isoformat(), "reminder": last is not None,
+                     "grace_minutes": int(grace.total_seconds() // 60)},
+                    outage,
+                ))  # fmt: skip
+            continue
+        alert = r["last_alert"] or {}
+        if not alert.get("last_seen") or datetime.fromisoformat(alert["last_seen"]) >= last_seen:
+            continue
+        back = f"critical_online:{mac}:{alert['last_seen']}"
+        if _latest(session, {back}):
+            continue
+        down = last_seen - datetime.fromisoformat(alert["last_seen"])
+        found.append(Found(
+            now, mac, "critical_online", f"{name} is back online after {_minutes(down)}",
+            {"down_since": alert["last_seen"], "back_at": last_seen.isoformat()}, back,
+        ))  # fmt: skip
+    return found
+
+
+def from_traffic(
+    session: Session, devices: Devices, settings: Settings, now: datetime
+) -> list[Found]:
+    """Captured-traffic detections, each dedup key at most once in its window."""
+    hits = traffic.detect(session, settings, now, devices.name)
+    latest = _latest(session, {h.dedup_key for h in hits})
+    found, seen = [], set()
+    for h in hits:
+        last = latest.get(h.dedup_key)
+        if h.dedup_key in seen or (last is not None and last > now - h.window):
+            continue
+        seen.add(h.dedup_key)
+        found.append(Found(h.time, h.mac, h.kind, h.message, h.details, h.dedup_key))
+    return found
+
+
 def raise_alerts(session: Session, settings: Settings, now: datetime) -> int:
     """Raise the alerts for whatever happened since the last round. Commits. Returns how
     many were kept."""
@@ -312,6 +390,8 @@ def raise_alerts(session: Session, settings: Settings, now: datetime) -> int:
         *from_upnp(session, devices),
         *threats(session, devices, now),
         *bypassers(session, devices, settings, now),
+        *critical(session, devices, settings, now),
+        *from_traffic(session, devices, settings, now),
     ]
     rows = []
     for f in found:

@@ -40,6 +40,9 @@ export interface Device {
   is_iot: boolean;
   notes: string | null;
   online: boolean;
+  /** Its going offline raises a critical alert after offline_grace_minutes. */
+  critical: boolean;
+  offline_grace_minutes: number | null;
   first_seen: string;
   last_seen: string;
   ip: string | null;
@@ -55,11 +58,15 @@ export interface MapDevice {
   ip: string | null;
   queries: number;
   blocked: number;
+  bytes_up: number;
+  bytes_down: number;
 }
 
 export interface NetworkMap {
   since: string;
   router: string | null;
+  /** Traffic capture is on: some traffic was captured in the window. */
+  captured: boolean;
   devices: MapDevice[];
 }
 
@@ -77,11 +84,113 @@ export interface DeviceName {
   last_seen: string;
 }
 
+export interface WifiClient {
+  source: "unifi" | "openwrt";
+  ap_name: string | null;
+  ssid: string | null;
+  band: string | null;
+  channel: number | null;
+  signal_dbm: number | null;
+  rx_rate_kbps: number | null;
+  tx_rate_kbps: number | null;
+  connected: boolean;
+  connected_since: string | null;
+  last_seen: string;
+}
+
+export interface Fingerbank {
+  device: string | null;
+  parents?: string[];
+  device_name?: string | null;
+  score?: number | null;
+  checked_at: string;
+}
+
 export interface DeviceDetail extends Device {
   merged_into: string | null;
   aliases: string[];
   ips: DeviceIP[];
   names: DeviceName[];
+  fingerbank: Fingerbank | null;
+  wifi: WifiClient | null;
+  critical_grace_default: number;
+}
+
+export interface TrafficPoint {
+  time: string;
+  bytes_up: number;
+  bytes_down: number;
+}
+
+export type TrafficDimension = "device" | "remote" | "app";
+
+export interface TrafficRow {
+  key: string;
+  label: string;
+  bytes_up: number;
+  bytes_down: number;
+  flows: number;
+}
+
+export interface Traffic {
+  start: string;
+  end: string;
+  bucket_seconds: number;
+  source: string;
+  captured: boolean;
+  bytes_up: number;
+  bytes_down: number;
+  points: TrafficPoint[];
+  by: TrafficDimension;
+  rows: TrafficRow[];
+}
+
+export interface TrafficRemote {
+  remote: string;
+  ip: string;
+  port: number;
+  protocol: string;
+  app: string | null;
+  outbound: boolean | null;
+  bytes_up: number;
+  bytes_down: number;
+  last: string;
+}
+
+export interface DeviceTraffic {
+  hours: number;
+  bytes_up: number;
+  bytes_down: number;
+  remotes: TrafficRemote[];
+}
+
+export interface PacketCapture {
+  id: number;
+  status: "pending" | "running" | "done" | "stopped" | "failed";
+  max_seconds: number;
+  max_bytes: number;
+  bytes: number;
+  packets: number | null;
+  error: string | null;
+  requested_at: string;
+  started_at: string | null;
+  ended_at: string | null;
+  downloadable: boolean;
+}
+
+export interface CaptureState {
+  available: boolean;
+  reason: string | null;
+  max_minutes: number;
+  max_megabytes: number;
+  captures: PacketCapture[];
+}
+
+/** Live throughput: bytes/second [up, down] per device, from /api/live. */
+export interface LiveReport {
+  time: string;
+  seconds: number;
+  devices: Record<string, [number, number]>;
 }
 
 /** Departures from a device's learned baseline. */
@@ -146,7 +255,12 @@ export type AlertKind =
   | DepartureKind
   | "blocklist_hit"
   | "upnp_forward"
-  | "dns_bypass";
+  | "dns_bypass"
+  | "critical_offline"
+  | "critical_online"
+  | "lateral_traffic"
+  | "upload_heavy"
+  | "unencrypted";
 export type AlertAction = "notify" | "record" | "mute";
 export type Severity = "info" | "warning" | "critical";
 
@@ -430,7 +544,9 @@ export interface OrgRuleSaved extends OrgRule {
   regrouped: number;
 }
 
-export type DeviceUpdate = Partial<Pick<Device, "label" | "category" | "is_iot" | "notes">>;
+export type DeviceUpdate = Partial<
+  Pick<Device, "label" | "category" | "is_iot" | "notes" | "critical" | "offline_grace_minutes">
+>;
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -527,7 +643,44 @@ export const api = {
   deleteOrgRule: (id: number) => request<OrgRuleSaved>("DELETE", `/api/org-rules/${id}`),
   domainCategories: () => get<DomainCategory[]>("/api/categories"),
   blocklists: () => get<Blocklists>("/api/blocklists"),
+  traffic: (start: string, end: string | undefined, by: TrafficDimension, mac?: string) =>
+    get<Traffic>(
+      `/api/traffic?${new URLSearchParams({ start, ...(end ? { end } : {}), by, ...(mac ? { mac } : {}) })}`,
+    ),
+  deviceTraffic: (mac: string, hours: number) => get<DeviceTraffic>(`/api/devices/${mac}/traffic?hours=${hours}`),
+  captures: (mac: string) => get<CaptureState>(`/api/devices/${mac}/captures`),
+  startCapture: (mac: string, minutes: number, megabytes: number) =>
+    request<PacketCapture>("POST", `/api/devices/${mac}/captures`, { minutes, megabytes }),
+  stopCapture: (mac: string, id: number) => request<PacketCapture>("POST", `/api/devices/${mac}/captures/${id}/stop`),
+  captureUrl: (mac: string, id: number) => `/api/devices/${mac}/captures/${id}.pcap`,
 };
+
+/** Bytes as KB, MB, GB (powers of 1000, as network speeds are). */
+export function bytes(n: number): string {
+  if (n < 1000) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n;
+  let i = -1;
+  while (v >= 1000 && i < units.length - 1) {
+    v /= 1000;
+    i++;
+  }
+  return `${v >= 100 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+}
+
+/** Bytes per second as a bit rate: kbit/s, Mbit/s, ... */
+export function rate(bytesPerSecond: number): string {
+  const bits = bytesPerSecond * 8;
+  if (bits < 1000) return `${Math.round(bits)} bit/s`;
+  const units = ["kbit/s", "Mbit/s", "Gbit/s"];
+  let v = bits;
+  let i = -1;
+  while (v >= 1000 && i < units.length - 1) {
+    v /= 1000;
+    i++;
+  }
+  return `${v >= 100 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+}
 
 /** What to call a device: the owner's label, else what it calls itself, else its maker. */
 export function deviceName(d: Pick<Device, "label" | "hostname" | "vendor" | "mac">): string {

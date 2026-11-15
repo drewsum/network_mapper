@@ -24,9 +24,15 @@ log = logging.getLogger(__name__)
 
 EXTERNAL_POOLS = [ipaddress.ip_network(n) for n in ("198.51.100.0/24", "203.0.113.0/24")]
 SEEDED_TABLES = [
-    "dns_queries", "domain_ips", "domains", "device_baselines", "alerts",
+    "dns_queries", "flows", "domain_ips", "domains", "device_baselines", "alerts",
     "ports", "upnp_mappings", "device_ips", "devices",
 ]  # fmt: skip
+# Captured traffic is seeded for the last FLOW_DAYS only: it's per minute, so it adds up.
+FLOW_DAYS = 2
+# Bytes a lookup's worth of traffic moves, by the domain's category: (down, up).
+FLOW_BYTES = {"streaming": (8_000_000, 80_000), "cdn": (2_000_000, 40_000),
+              "telemetry": (2_000, 6_000), "advertising": (4_000, 2_000)}  # fmt: skip
+DEFAULT_FLOW_BYTES = (60_000, 8_000)
 
 
 @dataclass
@@ -153,6 +159,37 @@ def generate_queries(
         hour += timedelta(hours=1)
 
 
+def generate_flows(
+    data: SeedData, start: datetime, end: datetime, rng: random.Random
+) -> Iterator[tuple]:
+    """Yield flows rows (time, mac, remote_ip, remote_port, protocol, app, domain, bytes_up,
+    bytes_down, packets, outbound, source): a few busy minutes an hour per device and site,
+    shaped like its lookups. Cameras send more than they receive."""
+    hour = start.replace(minute=0, second=0, microsecond=0)
+    cameras = {
+        r["mac"]
+        for r in data.devices
+        if any(w in (r["hostname"] or "") for w in ("cam", "doorbell"))
+    }
+    while hour < end:
+        for mac, _ip, dom, replies, offline_since in data.streams:
+            if (offline_since and hour >= offline_since) or dom.pattern == "blocked" or not replies:
+                continue
+            down, up = FLOW_BYTES.get(dom.category, DEFAULT_FLOW_BYTES)
+            if mac in cameras:
+                down, up = up, down * 4
+            minutes = min(6, poisson(rng, dom.rate * hour_multiplier(dom.pattern, hour.hour) / 4))
+            for minute in rng.sample(range(60), minutes):
+                t = hour + timedelta(minutes=minute)
+                if t >= end:
+                    continue
+                scale = rng.lognormvariate(0, 0.6)
+                b_down, b_up = int(down * scale), int(up * scale)
+                yield (t, mac, replies[0], 443, "tcp", "TLS", dom.domain, b_up, b_down,
+                       max(1, (b_up + b_down) // 1200), True, "nfstream")  # fmt: skip
+        hour += timedelta(hours=1)
+
+
 def seed(settings: Settings, days: int, reset: bool, rng_seed: int) -> None:
     lan_cidr = settings.require("lan_cidr")
     engine = get_engine()
@@ -178,22 +215,40 @@ def seed(settings: Settings, days: int, reset: bool, rng_seed: int) -> None:
 
     rows = _copy_queries(engine, generate_queries(data, now - timedelta(days=days), now, rng))
     log.info("seeded %d dns queries over %d days", rows, days)
+    flow_days = min(days, FLOW_DAYS)
+    flows = _copy(engine, FLOW_COPY, FLOW_TYPES,
+                  generate_flows(data, now - timedelta(days=flow_days), now, rng))  # fmt: skip
+    log.info("seeded %d flows over %d days", flows, flow_days)
 
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         refresh_all_aggregates(conn)
     log.info("continuous aggregates refreshed")
 
 
+FLOW_COPY = (
+    "COPY flows (time, mac, remote_ip, remote_port, protocol, app, domain, bytes_up, bytes_down, "
+    "packets, outbound, source) FROM STDIN"
+)
+FLOW_TYPES = ["timestamptz", "text", "inet", "int4", "text", "text", "text", "int8", "int8",
+              "int8", "bool", "text"]  # fmt: skip
+
+
 def _copy_queries(engine: Engine, rows: Iterator[tuple]) -> int:
+    return _copy(
+        engine,
+        "COPY dns_queries (time, client_ip, mac, domain, query_type, status, reply_ips) FROM STDIN",
+        ["timestamptz", "inet", "text", "text", "text", "text", "inet[]"],
+        rows,
+    )
+
+
+def _copy(engine: Engine, statement: str, types: list[str], rows: Iterator[tuple]) -> int:
     count = 0
     raw = engine.raw_connection()
     try:
         cur = raw.driver_connection.cursor()
-        with cur.copy(
-            "COPY dns_queries (time, client_ip, mac, domain, query_type, status, reply_ips) "
-            "FROM STDIN"
-        ) as copy:
-            copy.set_types(["timestamptz", "inet", "text", "text", "text", "text", "inet[]"])
+        with cur.copy(statement) as copy:
+            copy.set_types(types)
             for row in rows:
                 copy.write_row(row)
                 count += 1

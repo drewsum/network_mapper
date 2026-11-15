@@ -13,7 +13,12 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    proxy: { "/api": apiTarget, "/docs": apiTarget, "/openapi.json": apiTarget },
+    proxy: {
+      "/api": { target: apiTarget, ws: true }, // ws: the live throughput socket
+      "/docs": apiTarget,
+      "/openapi.json": apiTarget,
+      "/metrics": apiTarget,
+    },
     // Bind-mounted sources on Windows don't emit file events into the container.
     watch: process.env.VITE_POLL ? { usePolling: true, interval: 300 } : undefined,
   },

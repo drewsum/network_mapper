@@ -5,7 +5,7 @@ from ipaddress import IPv4Network, ip_address
 import pytest
 
 from netmap.seed.catalog import CATALOG
-from netmap.seed.main import EXTERNAL_POOLS, build, generate_queries, random_mac
+from netmap.seed.main import EXTERNAL_POOLS, build, generate_flows, generate_queries, random_mac
 
 NOW = datetime(2026, 1, 15, 12, tzinfo=UTC)
 CIDR = IPv4Network("192.0.2.0/24")
@@ -65,3 +65,14 @@ def test_silent_device_has_no_queries(data):
     silent = {d["mac"] for d in data.devices if d["hostname"] == "chromecast"}
     rows = generate_queries(data, NOW - timedelta(days=1), NOW, random.Random(3))
     assert not silent & {r[2] for r in rows}
+
+
+def test_flows_are_shaped_by_site_and_cameras_upload(data):
+    rows = list(generate_flows(data, NOW - timedelta(hours=12), NOW, random.Random(2)))
+    assert rows and all(NOW - timedelta(hours=12) <= r[0] < NOW for r in rows)
+    assert all(any(ip_address(r[2]) in net for net in EXTERNAL_POOLS) for r in rows)
+    camera = next(r["mac"] for r in data.devices if r["hostname"] == "cam-garage")
+    tv = [r for r in rows if r[6] == "nflxvideo.net"]
+    cam = [r for r in rows if r[1] == camera]
+    assert tv and sum(r[8] for r in tv) > 10 * sum(r[7] for r in tv)  # streaming: down
+    assert cam and sum(r[7] for r in cam) > sum(r[8] for r in cam)  # camera: up

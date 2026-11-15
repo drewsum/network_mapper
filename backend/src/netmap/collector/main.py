@@ -10,6 +10,7 @@ from netmap.collector.arp import ArpSource
 from netmap.collector.base import Source
 from netmap.collector.baseline import BaselineSource
 from netmap.collector.categories import CategorySource
+from netmap.collector.fingerbank import FingerbankSource
 from netmap.collector.geoip import GeoipSource
 from netmap.collector.names import NameSource
 from netmap.collector.orgs import OrganizationSource
@@ -17,6 +18,7 @@ from netmap.collector.pihole import PiholeSource
 from netmap.collector.ports import PortScanSource
 from netmap.collector.upnp import UpnpSource
 from netmap.collector.vendors import OuiSource
+from netmap.collector.wifi import WifiSource
 from netmap.config import Settings
 
 log = logging.getLogger(__name__)
@@ -28,6 +30,8 @@ SOURCE_TYPES: list[type[Source]] = [
     NameSource,
     PortScanSource,
     UpnpSource,
+    FingerbankSource,
+    WifiSource,
     PiholeSource,
     GeoipSource,
     OrganizationSource,

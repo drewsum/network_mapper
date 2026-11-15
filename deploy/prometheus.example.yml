@@ -1,0 +1,11 @@
+# A Prometheus scrape job for netmap (merge into your prometheus.yml). Set
+# NETMAP_METRICS_TOKEN on the netmap stack and put the same value in a file Prometheus can
+# read; the dashboard in deploy/grafana/ uses these metrics.
+scrape_configs:
+  - job_name: netmap
+    scrape_interval: 60s
+    metrics_path: /metrics
+    authorization:
+      credentials_file: /etc/prometheus/netmap-token
+    static_configs:
+      - targets: ["<truenas-host>:8000"]

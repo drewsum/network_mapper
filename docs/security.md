@@ -10,6 +10,7 @@ locked down by default. This is what it does, and how to put HTTPS in front of i
 | `api` | netmap (uid 10001) | none | read-only, `/tmp` in memory |
 | `migrate` | netmap | none | read-only, `/tmp` in memory |
 | `collector` | netmap | `NET_RAW` only | read-only, `/tmp` in memory, GeoIP volume |
+| `capture` (opt-in) | netmap | `NET_RAW` only | read-only, `/tmp` in memory, `captures` volume |
 | `backup` | root at start, then netmap | `CHOWN`, `SETUID`, `SETGID` at start; none after | read-only, `/tmp` in memory, `backups/` |
 | `db` | root at start, then postgres | Docker's defaults | the data directory |
 
@@ -19,6 +20,9 @@ locked down by default. This is what it does, and how to put HTTPS in front of i
   bounding set is `NET_RAW` alone, so nothing it runs can gain anything else. It doesn't need
   `NET_ADMIN`: it changes no network settings, and listens for DHCP, mDNS and SSDP without
   binding their ports.
+- **The capture service** (only with the `capture` profile, see [span.md](span.md)) is set up
+  like the collector: host networking, `NET_RAW` through `python-netraw` and a copy of the
+  capability on `tcpdump` for packet captures. The API reads the packet captures read-only.
 - **The backup service** starts as root only to hand its `backups/` directory to the netmap
   user, then switches to it with `setpriv`. The dump process has no capabilities, and the
   dumps are readable by uid 10001 only.
@@ -41,6 +45,8 @@ logs them.
 | `NETMAP_PIHOLE_PASSWORD` | A Pi-hole **app password** (Pi-hole *Settings → Web interface / API*), not the admin password. It can read the query log and change the deny list. |
 | `NETMAP_MAXMIND_LICENSE_KEY`, `NETMAP_ABUSECH_AUTH_KEY` | Downloads (GeoIP, threat lists). Optional. |
 | `NETMAP_APPRISE_URLS` | Notification services; the URLs usually embed tokens. |
+| `NETMAP_METRICS_TOKEN` | What Prometheus sends for `/metrics`. Read-only, but the metrics name every device. |
+| `NETMAP_FINGERBANK_API_KEY`, `NETMAP_UNIFI_PASSWORD`, `NETMAP_OPENWRT_PASSWORD` | Optional integrations ([integrations.md](integrations.md)). Give UniFi a *View Only* account. |
 
 `pg_dump` and `pg_restore` get the database password through `PGPASSWORD` in their
 environment, never on the command line.
@@ -54,6 +60,8 @@ environment, never on the command line.
   minutes.
 - The API only takes JSON bodies, which browsers won't send to another site without CORS
   (and netmap allows none), so other sites can't act with your session.
+- The live throughput WebSocket (`/api/live`) checks the session cookie itself and refuses
+  connections from pages on other sites.
 - Every response says the page may not be framed (`X-Frame-Options: DENY`,
   `frame-ancestors 'none'`), must not be MIME-sniffed, and sends no referrer to other sites.
 

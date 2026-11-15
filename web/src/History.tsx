@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { bucketName, Chart } from "./Activity";
 import { api, type HistoryDimension, type HistoryFilters, type HistoryRow } from "./api";
+import { TrafficCard } from "./Traffic";
 import { countryName } from "./ui";
 
 const RANGES = [
@@ -227,6 +228,7 @@ export function HistoryPage() {
           </table>
         )}
       </section>
+      <TrafficCard start={range.start} end={range.end} />
     </article>
   );
 }

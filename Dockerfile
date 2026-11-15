@@ -28,12 +28,14 @@ ENV NETMAP_WEB_DIST_DIR=/app/web-dist
 ADD https://www.postgresql.org/media/keys/ACCC4CF8.asc /usr/share/keyrings/pgdg.asc
 # The collector's raw ARP socket needs CAP_NET_RAW, but Docker only grants cap_add
 # capabilities to root. This copy of the interpreter carries it as a file capability and is
-# used by the collector alone; the API and the other roles run the plain interpreter.
-RUN chmod 644 /usr/share/keyrings/pgdg.asc  && echo "deb [signed-by=/usr/share/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list  && apt-get update && apt-get install -y --no-install-recommends libcap2-bin postgresql-client-16  && cp "$(readlink -f /app/.venv/bin/python)" /app/.venv/bin/python-netraw  && setcap cap_net_raw+ep /app/.venv/bin/python-netraw  && apt-get purge -y libcap2-bin && rm -rf /var/lib/apt/lists/*
+# used by the collector and capture service alone; the API and the other roles run the plain
+# interpreter. tcpdump (the capture service's packet captures) gets the same capability.
+# Neither can gain it in a container whose capabilities are all dropped.
+RUN chmod 644 /usr/share/keyrings/pgdg.asc  && echo "deb [signed-by=/usr/share/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list  && apt-get update && apt-get install -y --no-install-recommends libcap2-bin postgresql-client-16 tcpdump  && cp "$(readlink -f /app/.venv/bin/python)" /app/.venv/bin/python-netraw  && setcap cap_net_raw+ep /app/.venv/bin/python-netraw  && setcap cap_net_raw+ep "$(command -v tcpdump)"  && apt-get purge -y libcap2-bin && rm -rf /var/lib/apt/lists/*
 
-# /app/geoip holds the downloaded GeoIP databases; compose mounts a volume there, which
-# takes this ownership when it's first created.
-RUN useradd --system --uid 10001 netmap && mkdir /app/geoip && chown netmap /app/geoip
+# /app/geoip holds the downloaded GeoIP databases and /captures the packet captures; compose
+# mounts volumes there, which take this ownership when they're first created.
+RUN useradd --system --uid 10001 netmap && mkdir /app/geoip /captures && chown netmap /app/geoip /captures
 USER netmap
 EXPOSE 8000
 CMD ["netmap", "api"]

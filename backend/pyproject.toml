@@ -8,6 +8,7 @@ dependencies = [
     "apprise>=1.9",
     "fastapi>=0.115",
     "maxminddb>=2.6",
+    "nfstream>=6.6.0",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.6",
     "pyyaml>=6.0",

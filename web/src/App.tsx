@@ -27,10 +27,12 @@ function bannerDismissed(): boolean {
   }
 }
 
-/** What v1 can't see: bytes, and lookups that skip Pi-hole. Dismissible, per browser. */
+/** What v1 can't see: bytes, and lookups that skip Pi-hole. Dismissible, per browser; gone
+ * once the capture service reports, since then netmap sees both. */
 function LimitsBanner() {
   const [dismissed, setDismissed] = useState(bannerDismissed);
-  if (dismissed) return null;
+  const checks = useQuery({ queryKey: ["status"], queryFn: api.status });
+  if (dismissed || checks.data?.some((c) => c.name === "capture")) return null;
   const dismiss = () => {
     try {
       localStorage.setItem(BANNER_KEY, "1");

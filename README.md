@@ -4,10 +4,11 @@ Self-hosted map of every device on the home LAN/WLAN, plus a 30-day history of w
 device talks to. Built mainly to see whether IoT devices phone home anywhere beyond their
 companion apps' clouds. It runs in Docker and will be deployed on TrueNAS.
 
-**v1 data sources:** Pi-hole's DNS query log and active LAN discovery. No network changes
-are needed. Byte-level traffic (switch port mirroring) is a stretch goal (milestone M7).
-See [what netmap can and can't see](docs/visibility.md): it counts lookups, not bytes,
-and misses devices that bypass Pi-hole.
+**Data sources:** Pi-hole's DNS query log and active LAN discovery, which need no network
+changes. See [what netmap can and can't see](docs/visibility.md): on their own they count
+lookups, not bytes, and miss devices that bypass Pi-hole. Optional traffic capture from a
+switch's mirror port or a router's NetFlow/IPFIX adds bytes, applications, live throughput
+and packet captures ([docs/span.md](docs/span.md)).
 
 ## Layout
 
@@ -17,7 +18,8 @@ backend/            Python package `netmap` (uv project)
     config.py       all settings, from NETMAP_* env vars
     db/             SQLAlchemy models, session, TimescaleDB policies
     api/            FastAPI app (also serves the built UI in production)
-    collector/      discovery / Pi-hole sources (M1, M2)
+    collector/      discovery, Pi-hole, enrichment, alerts, Fingerbank, Wi-Fi APs
+    capture/        traffic capture service: nfstream (SPAN), NetFlow/IPFIX, pcaps
     seed/           synthetic data for local development
   migrations/       Alembic migrations (hypertables, continuous aggregates)
   tests/
@@ -25,8 +27,8 @@ web/                React + TypeScript + Vite UI
 scripts/            check_hardcoded_ips.py, test.sh, build-on-host.sh
 Dockerfile          one image; compose picks the role (api / collector / migrate / seed)
 docker-compose.yml  dev stack
-deploy/             portainer-compose.yml: the TrueNAS server stack
-docs/               deploy-portainer.md
+deploy/             portainer-compose.yml: the TrueNAS server stack; Grafana dashboard
+docs/               deployment, backups, security, traffic capture, integrations
 ```
 
 ## Configuration
@@ -205,5 +207,9 @@ Git-repository stack ([docs/deploy-portainer.md](docs/deploy-portainer.md)).
 - [docs/backups.md](docs/backups.md): daily database dumps, restoring one, and CSV/JSON export.
 - [docs/security.md](docs/security.md): what's locked down, secrets, and HTTPS through a
   reverse proxy (`NETMAP_TRUSTED_PROXIES`).
+- [docs/span.md](docs/span.md): traffic capture from a switch's mirror port (hardware,
+  wiring, Wi-Fi) or a router's NetFlow/IPFIX; the opt-in `capture` service.
+- [docs/integrations.md](docs/integrations.md): critical-device alerts, Prometheus and the
+  Grafana dashboard, Fingerbank device fingerprinting, UniFi/OpenWrt Wi-Fi.
 
 The **System** page in the UI shows the self-checks, the latest backup, and the exports.

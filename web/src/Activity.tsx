@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState } from "react";
-import { type ActivityPoint, api, type DeviceActivity, type Share } from "./api";
+import { type ActivityPoint, api, type Share } from "./api";
 
 const HEIGHT = 180;
 const PAD = { top: 8, right: 8, bottom: 22, left: 40 };
@@ -43,7 +43,7 @@ function tickLabel(iso: string, bucketSeconds: number): string {
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-export function bucketLabel(p: ActivityPoint, bucketSeconds: number): string {
+export function bucketLabel(p: { time: string }, bucketSeconds: number): string {
   const from = new Date(p.time);
   const to = new Date(from.getTime() + bucketSeconds * 1000);
   if (bucketSeconds >= 86400) return from.toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -57,14 +57,41 @@ function topRounded(x: number, y: number, w: number, h: number, r: number): stri
   return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
 }
 
-/** Allowed and blocked lookups per bucket, stacked, with a hover tooltip. */
-export function Chart({ data }: { data: Pick<DeviceActivity, "bucket_seconds" | "points"> }) {
+/** Two stacked parts of each bucket's bar: how to get them from a point, and how to show them. */
+export interface Series<P> {
+  split: (p: P) => [number, number]; // [lower, upper]
+  classes: [string, string];
+  labels: [string, string];
+  format: (n: number) => string;
+  axis: (n: number) => string;
+  aria: string;
+}
+
+const DNS_SERIES: Series<ActivityPoint> = {
+  split: (p) => [p.queries - p.blocked, p.blocked],
+  classes: ["allowed", "blocked"],
+  labels: ["allowed", "blocked"],
+  format: (n) => n.toLocaleString(),
+  axis: compact,
+  aria: "DNS lookups over time, allowed and blocked",
+};
+
+/** Two stacked values per bucket (by default allowed and blocked lookups), with a hover
+ * tooltip. */
+export function Chart<P extends { time: string }>({
+  data,
+  series = DNS_SERIES as unknown as Series<P>,
+}: {
+  data: { bucket_seconds: number; points: P[] };
+  series?: Series<P>;
+}) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const points = data.points;
+  const parts = points.map(series.split);
   const plotW = Math.max(0, width - PAD.left - PAD.right);
   const plotH = HEIGHT - PAD.top - PAD.bottom;
-  const { top, step } = niceScale(Math.max(0, ...points.map((p) => p.queries)));
+  const { top, step } = niceScale(Math.max(0, ...parts.map(([a, b]) => a + b)));
   const slot = points.length ? plotW / points.length : 0;
   const barW = Math.max(1, Math.min(MAX_BAR, slot - GAP));
   const y = (v: number) => PAD.top + plotH - (v / top) * plotH;
@@ -75,12 +102,12 @@ export function Chart({ data }: { data: Pick<DeviceActivity, "bucket_seconds" | 
   return (
     <div className="chart" ref={ref} onMouseLeave={() => setHover(null)}>
       {width > 0 && (
-        <svg height={HEIGHT} role="img" aria-label="DNS lookups over time, allowed and blocked">
+        <svg height={HEIGHT} role="img" aria-label={series.aria}>
           {ticks.map((t) => (
             <g key={t}>
               <line className="grid-line" x1={PAD.left} x2={width - PAD.right} y1={y(t)} y2={y(t)} />
               <text className="axis" x={PAD.left - 6} y={y(t) + 4} textAnchor="end">
-                {compact(t)}
+                {series.axis(t)}
               </text>
             </g>
           ))}
@@ -100,28 +127,28 @@ export function Chart({ data }: { data: Pick<DeviceActivity, "bucket_seconds" | 
           <g className="bars">
             {points.map((p, i) => {
               const x = PAD.left + i * slot + (slot - barW) / 2;
-              const allowed = p.queries - p.blocked;
-              const hAllowed = (allowed / top) * plotH;
-              const hBlocked = (p.blocked / top) * plotH;
+              const [lower, upper] = parts[i];
+              const hLower = (lower / top) * plotH;
+              const hUpper = (upper / top) * plotH;
               const base = PAD.top + plotH;
               // The gap sits between the segments, taken from the upper one.
-              const gap = allowed > 0 && p.blocked > 0 ? Math.min(GAP, hBlocked / 2) : 0;
+              const gap = lower > 0 && upper > 0 ? Math.min(GAP, hUpper / 2) : 0;
               return (
                 <g key={p.time}>
-                  {allowed > 0 && (
+                  {lower > 0 && (
                     <path
-                      className="allowed"
+                      className={series.classes[0]}
                       d={
-                        p.blocked > 0
-                          ? `M${x},${base}V${base - hAllowed}H${x + barW}V${base}Z`
-                          : topRounded(x, base - hAllowed, barW, hAllowed, 4)
+                        upper > 0
+                          ? `M${x},${base}V${base - hLower}H${x + barW}V${base}Z`
+                          : topRounded(x, base - hLower, barW, hLower, 4)
                       }
                     />
                   )}
-                  {p.blocked > 0 && (
+                  {upper > 0 && (
                     <path
-                      className="blocked"
-                      d={topRounded(x, base - hAllowed - hBlocked, barW, hBlocked - gap, 4)}
+                      className={series.classes[1]}
+                      d={topRounded(x, base - hLower - hUpper, barW, hUpper - gap, 4)}
                     />
                   )}
                   {i % every === 0 && (
@@ -143,14 +170,12 @@ export function Chart({ data }: { data: Pick<DeviceActivity, "bucket_seconds" | 
           }}
         >
           <div>{bucketLabel(shown, data.bucket_seconds)}</div>
-          <div>
-            <span className="swatch allowed" />
-            {(shown.queries - shown.blocked).toLocaleString()} allowed
-          </div>
-          <div>
-            <span className="swatch blocked" />
-            {shown.blocked.toLocaleString()} blocked
-          </div>
+          {[0, 1].map((k) => (
+            <div key={k}>
+              <span className={`swatch ${series.classes[k]}`} />
+              {series.format(parts[hover][k])} {series.labels[k]}
+            </div>
+          ))}
         </div>
       )}
     </div>

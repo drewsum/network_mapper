@@ -62,6 +62,9 @@ th { color: var(--muted); font-weight: 500; }
   /* Chart marks, checked for colorblind separation and contrast on --card. */
   --chart-allowed: #2f6fde;
   --chart-blocked: #c0392b;
+  /* Traffic: download and upload (validated as a pair, light and dark). */
+  --chart-down: #2f6fde;
+  --chart-up: #eb6834;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -70,6 +73,8 @@ th { color: var(--muted); font-weight: 500; }
     --accent-soft: #23304a;
     --chart-allowed: #3987e5;
     --chart-blocked: #e05a4c;
+    --chart-down: #3987e5;
+    --chart-up: #d95926;
   }
 }
 a { color: var(--accent); text-decoration: none; }
@@ -152,9 +157,9 @@ tr.chosen td { font-weight: 550; }
 .ev.offline, .ev.port_closed { color: var(--muted); }
 .ev.port_opened, .ev.new_device, .ev.query_spike { font-weight: 550; }
 .alerts { list-style: none; padding: 0; margin: 0 0 10px; }
-.exports { list-style: none; padding: 0; margin: 0; }
-.exports li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
-.exports li:first-child { border-top: 0; }
+.exports, .captures { list-style: none; padding: 0; margin: 0; }
+.exports li, .captures li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.exports li:first-child, .captures li:first-child { border-top: 0; }
 .exports-links { display: flex; gap: 14px; flex-shrink: 0; }
 .alert { padding: 8px 0; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
 .alert.done .alert-message { color: var(--muted); }
@@ -211,6 +216,8 @@ td.blocked { color: var(--bad); }
 .chart .axis { fill: var(--muted); font-size: 11px; }
 .chart .allowed { fill: var(--chart-allowed); }
 .chart .blocked { fill: var(--chart-blocked); }
+.chart .down { fill: var(--chart-down); }
+.chart .up { fill: var(--chart-up); }
 .chart .hit { fill: transparent; }
 .chart .hit.on { fill: var(--line); fill-opacity: 0.6; }
 .chart .bars { pointer-events: none; }
@@ -240,6 +247,13 @@ td.blocked { color: var(--bad); }
 .network-map .cy.static { min-height: 0; pointer-events: none; }
 .swatch.offline { background: var(--line); border: 1px dashed var(--muted); }
 .swatch.ring { background: transparent; border: 2px solid var(--chart-blocked); border-radius: 50%; }
+.swatch.down { background: var(--chart-down); }
+.swatch.up { background: var(--chart-up); }
+.swatch.flow { width: 16px; height: 3px; border-radius: 2px; vertical-align: 2px; background: var(--chart-allowed); opacity: 0.6; }
+.breakdown .bar.up-bar { background: var(--chart-up); }
+.live-rate { font-variant-numeric: tabular-nums; }
+.inline-field { display: inline-flex; align-items: center; gap: 6px; }
+.inline-field input[type="number"] { width: 5em; }
 
 /* History explorer */
 .custom-range { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
