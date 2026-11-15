@@ -23,7 +23,7 @@ from netmap.db.models import PacketCapture
 
 log = logging.getLogger(__name__)
 
-RING_FILES = 4
+RING_FILES = 4  # at most
 PCAP_HEADER = 24  # the global header at the start of every classic pcap file
 
 
@@ -49,11 +49,13 @@ def merged(files: list[Path], chunk: int = 1 << 20):
 
 
 def tcpdump_command(binary: str, iface: str, mac: str, path: Path, max_bytes: int) -> list[str]:
-    # -C is in kilobytes with a "k" suffix (tcpdump 4.99+), so small limits hold too.
-    file_kb = max(1, max_bytes // RING_FILES // 1000)
+    # -C counts whole millions of bytes (Debian's tcpdump has no smaller unit), so a small
+    # limit gets fewer files rather than files bigger than it allows.
+    files = max(1, min(RING_FILES, max_bytes // 1_000_000))
+    file_mb = max(1, max_bytes // files // 1_000_000)
     return [
         binary, "-i", iface, "-n", "-U", "-s", "0", "-w", str(path),
-        "-C", f"{file_kb}k", "-W", str(RING_FILES), "ether", "host", mac,
+        "-C", str(file_mb), "-W", str(files), "ether", "host", mac,
     ]  # fmt: skip
 
 

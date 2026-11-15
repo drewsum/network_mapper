@@ -330,9 +330,15 @@ def test_ring_files_merge_into_one_pcap_in_order(tmp_path):
 
 def test_tcpdump_ring_is_bounded():
     cmd = tcpdump_command("tcpdump", "eth1", DEV, Path("/c/capture-3.pcap"), 20_000_000)
-    assert cmd[cmd.index("-C") + 1] == "5000k" and cmd[cmd.index("-W") + 1] == "4"
-    small = tcpdump_command("tcpdump", "eth1", DEV, Path("/c/capture-3.pcap"), 2_000_000)
-    assert small[small.index("-C") + 1] == "500k"  # 4 x 500 kB: the 2 MB asked for
+    assert cmd[cmd.index("-C") + 1] == "5" and cmd[cmd.index("-W") + 1] == "4"
+
+    def ring(max_bytes):
+        c = tcpdump_command("tcpdump", "eth1", DEV, Path("/c/x.pcap"), max_bytes)
+        return int(c[c.index("-W") + 1]), int(c[c.index("-C") + 1])
+
+    assert ring(2_000_000) == (2, 1)  # never more than asked for
+    assert ring(1_000_000) == (1, 1)
+    assert ring(5_000_000) == (4, 1)
     assert cmd[-3:] == ["ether", "host", DEV]
 
 
